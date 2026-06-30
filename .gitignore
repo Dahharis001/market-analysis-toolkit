@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Trade journal data (personal — don't publish)
+trades.csv
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Scratch / temp
+*.log
+*.tmp
