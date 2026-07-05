@@ -31,7 +31,7 @@ def load_config() -> Config:
         telegram_bot_token=token,
         openrouter_api_key=key,
         video_model=os.environ.get("VIDEO_MODEL", "kwaivgi/kling-v3.0-std"),
-        image_model=os.environ.get("IMAGE_MODEL", "google/gemini-2.5-flash-image-preview"),
+        image_model=os.environ.get("IMAGE_MODEL", "google/gemini-2.5-flash-image"),
         stage_prompt_model=os.environ.get("STAGE_PROMPT_MODEL", "openai/gpt-4o"),
         clip_duration_sec=int(os.environ.get("CLIP_DURATION_SEC", "8")),
         generate_audio=os.environ.get("GENERATE_AUDIO", "false").lower() == "true",
