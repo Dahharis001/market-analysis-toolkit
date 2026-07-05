@@ -29,6 +29,14 @@ import requests
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 
+# Appended to every image/video generation prompt as a hard constraint, independent
+# of whatever the stage-prompt LLM wrote - this is the single most important
+# requirement for this bot: no people anywhere in the renovation stages.
+NO_PEOPLE_SUFFIX = (
+    " Строго без людей: ни одного человека, лица, руки, силуэта или рабочего в кадре "
+    "ни на одном этапе - только пустое помещение и материалы/инструменты сами по себе."
+)
+
 
 class OpenRouterError(RuntimeError):
     pass
@@ -129,7 +137,7 @@ def generate_stage_image(api_key: str, model: str, prompt: str, reference_image_
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prompt},
+                        {"type": "text", "text": prompt + NO_PEOPLE_SUFFIX},
                         {"type": "image_url", "image_url": {"url": reference_image_data_uri}},
                     ],
                 }
@@ -163,7 +171,7 @@ def create_video_job(
     """Submit a video generation job, return its job id."""
     body = {
         "model": model,
-        "prompt": prompt,
+        "prompt": prompt + NO_PEOPLE_SUFFIX,
         "duration": duration,
         "aspect_ratio": aspect_ratio,
         "resolution": resolution,
