@@ -5,7 +5,14 @@ import tempfile
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
-from aiogram.types import FSInputFile, InputMediaPhoto, Message
+from aiogram.types import (
+    CallbackQuery,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Message,
+)
 
 import config
 import image_pipeline as ip
@@ -24,35 +31,56 @@ STYLE_NOTES = (
     "скрытая LED-подсветка, минимализм, премиальная сантехника без ручек, кинематографичный свет"
 )
 
-MIN_STAGES, MAX_STAGES = 3, 30
+STAGE_OPTIONS = (7, 10, 12, 15)
+
+# In-memory: user_id -> Telegram file_id of the reference photo they just sent,
+# waiting for them to pick a stage count. Fine for a single-process polling bot;
+# would need real storage (Redis/db) if this bot is ever scaled to multiple workers.
+_pending_photos: dict[int, str] = {}
+
+
+def _stage_count_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=str(n), callback_data=f"stages:{n}") for n in STAGE_OPTIONS]
+        ]
+    )
 
 
 @dp.message(CommandStart())
 async def start(message: Message) -> None:
     await message.answer(
         "Пришлите фото готовой ванной комнаты (референс — финальный результат ремонта).\n\n"
-        f"В подписи к фото можно указать число этапов, например «12» "
-        f"(по умолчанию {cfg.default_num_stages}, диапазон {MIN_STAGES}-{MAX_STAGES}).\n\n"
-        "Сначала пришлю альбомом фото каждого этапа (сгенерированы ИИ), а затем — готовый "
-        "видео-таймлапс ремонта от голых стен до вашего фото. "
+        "Я спрошу, сколько этапов ремонта показать (7 / 10 / 12 / 15), затем:\n"
+        "1) один ИИ распишет промпт для каждого этапа по вашему фото,\n"
+        "2) по этим промптам сгенерируются фото каждого этапа (пришлю альбомом),\n"
+        "3) по этим фото соберётся один плавный видео-таймлапс.\n\n"
         "Это может занять несколько минут и расходует баланс на вашем OpenRouter-аккаунте."
     )
 
 
 @dp.message(F.photo)
 async def handle_photo(message: Message) -> None:
-    num_stages = cfg.default_num_stages
-    if message.caption:
-        digits = "".join(ch for ch in message.caption if ch.isdigit())
-        if digits:
-            num_stages = max(MIN_STAGES, min(MAX_STAGES, int(digits)))
+    _pending_photos[message.from_user.id] = message.photo[-1].file_id
+    await message.answer("Сколько этапов ремонта сделать?", reply_markup=_stage_count_keyboard())
 
-    status_msg = await message.answer(f"Принял фото. Этапов: {num_stages}. Анализирую референс…")
+
+@dp.callback_query(F.data.startswith("stages:"))
+async def handle_stage_choice(callback: CallbackQuery) -> None:
+    await callback.answer()
+    user_id = callback.from_user.id
+    file_id = _pending_photos.pop(user_id, None)
+    if not file_id:
+        await callback.message.edit_text("Фото не найдено, пришлите его заново.")
+        return
+
+    num_stages = int(callback.data.split(":", 1)[1])
+    await callback.message.edit_text(f"Этапов: {num_stages}. Анализирую референс…")
+    status_msg = callback.message
 
     with tempfile.TemporaryDirectory() as tmp:
-        photo = message.photo[-1]
         ref_path = os.path.join(tmp, "reference.jpg")
-        await bot.download(photo, destination=ref_path)
+        await bot.download(file_id, destination=ref_path)
 
         try:
             image_data_uri = orc.image_to_data_uri(ref_path)
@@ -93,7 +121,7 @@ async def handle_photo(message: Message) -> None:
         try:
             media = [InputMediaPhoto(media=FSInputFile(p)) for p in stage_images]
             for start in range(0, len(media), 10):
-                await message.answer_media_group(media[start:start + 10])
+                await bot.send_media_group(chat_id=status_msg.chat.id, media=media[start:start + 10])
         except Exception:
             log.exception("failed to send stage image album")
 
@@ -111,7 +139,9 @@ async def handle_photo(message: Message) -> None:
             return
 
         await status_msg.edit_text("Готово! Отправляю видео…")
-        await message.answer_video(FSInputFile(final_path), caption="Таймлапс ремонта готов")
+        await bot.send_video(
+            chat_id=status_msg.chat.id, video=FSInputFile(final_path), caption="Таймлапс ремонта готов"
+        )
 
 
 async def main() -> None:

@@ -8,9 +8,9 @@ into one crossfaded timelapse that ends on a frame matching the user's original 
 
 ## How it works
 
-1. User sends a photo to the bot, optionally with a number in the caption (e.g. `12`)
-   to control how many renovation stages to generate (default set by
-   `DEFAULT_NUM_STAGES`, 3-30 allowed).
+1. User sends a photo to the bot; the bot replies with an inline keyboard
+   (`STAGE_OPTIONS` in `bot.py`, default 7/10/12/15) to pick how many renovation
+   stages to generate.
 2. `openrouter_client.generate_stage_prompts` sends the photo + instructions to a
    vision-capable chat model, gets back a JSON array of stage prompts (bare concrete
    shell -> plumbing/electrical -> waterproofing/screed/plaster -> tiling -> ceiling &

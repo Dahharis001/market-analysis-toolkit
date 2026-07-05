@@ -13,7 +13,6 @@ class Config:
     video_model: str
     image_model: str
     stage_prompt_model: str
-    default_num_stages: int
     clip_duration_sec: int
     generate_audio: bool
     aspect_ratio: str
@@ -34,7 +33,6 @@ def load_config() -> Config:
         video_model=os.environ.get("VIDEO_MODEL", "kwaivgi/kling-v3.0-std"),
         image_model=os.environ.get("IMAGE_MODEL", "google/gemini-2.5-flash-image-preview"),
         stage_prompt_model=os.environ.get("STAGE_PROMPT_MODEL", "openai/gpt-4o"),
-        default_num_stages=int(os.environ.get("DEFAULT_NUM_STAGES", "7")),
         clip_duration_sec=int(os.environ.get("CLIP_DURATION_SEC", "8")),
         generate_audio=os.environ.get("GENERATE_AUDIO", "false").lower() == "true",
         aspect_ratio=os.environ.get("ASPECT_RATIO", "9:16"),
