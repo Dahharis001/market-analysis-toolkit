@@ -27,9 +27,9 @@ bot = Bot(cfg.telegram_bot_token)
 dp = Dispatcher()
 
 STYLE_NOTES = (
-    "люксовый дорогой интерьер: премиальные материалы, качественная отделка, скрытое LED-освещение, "
-    "минимализм, дорогая мебель и техника, кинематографичный свет - материалы и мебель подбираются "
-    "под тип помещения, увиденный на фото"
+    "luxury high-end interior: premium materials, high-quality finishing, hidden LED lighting, "
+    "minimalism, expensive furniture and appliances, cinematic lighting - materials and furniture "
+    "match whatever room type is seen in the photo"
 )
 
 STAGE_OPTIONS = (7, 10, 12, 15)

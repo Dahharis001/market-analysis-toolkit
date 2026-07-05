@@ -33,8 +33,17 @@ OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 # of whatever the stage-prompt LLM wrote - this is the single most important
 # requirement for this bot: no people anywhere in the renovation stages.
 NO_PEOPLE_SUFFIX = (
-    " Строго без людей: ни одного человека, лица, руки, силуэта или рабочего в кадре "
-    "ни на одном этапе - только пустое помещение и материалы/инструменты сами по себе."
+    " Strictly no people: not a single person, face, hand, silhouette, or worker in frame at "
+    "any stage - only the empty room and materials/tools by themselves."
+)
+
+# Appended alongside NO_PEOPLE_SUFFIX to stop the image/video model from inventing or
+# moving architectural elements (a common failure mode: adding a window that isn't in
+# the real photo, moving a door, changing the room's proportions).
+STRUCTURE_LOCK_SUFFIX = (
+    " Keep the exact same room architecture as the original reference photo: same walls, same "
+    "window and door positions and sizes, same room shape and proportions. Do not add, remove, "
+    "resize, or move any window, door, or wall - only surface finishes and contents change."
 )
 
 
@@ -80,42 +89,52 @@ def generate_stage_prompts(
     a kitchen or bathroom does, etc.) instead of a fixed bathroom-only checklist.
     """
     system = (
-        "Ты — режиссёр и дизайнер интерьеров, который придумывает промпты для text/image-to-video "
-        "генерации кинематографичного таймлапса ремонта ЛЮБОГО типа помещения (ванная, спальня, "
-        "кухня, гостиная, кабинет и т.д.). Всегда отвечай СТРОГО валидным JSON-массивом строк, "
-        "без markdown-обёртки и без пояснений."
+        "You are a director writing short, punchy prompts in English for text/image-to-video "
+        "renovation timelapse generation, for ANY room type (bathroom, bedroom, kitchen, living "
+        "room, office, etc.). Always reply with a STRICTLY valid JSON array of strings, in "
+        "English, no markdown, no explanation."
     )
     user_text = (
-        f"На фото — готовый интерьер комнаты (финальный результат ремонта). Сначала определи по фото, "
-        f"что это за тип помещения и какие работы для него реально нужны (например: в спальне и "
-        f"гостиной не бывает гидроизоляции и сантехники, зато есть шкафы/кровать/декор; в ванной и "
-        f"кухне — сантехника, гидроизоляция, плитка и т.п.). "
-        f"Придумай ровно {num_stages} промптов на русском языке — по одному на каждый этап ремонта "
-        f"именно этого помещения и его типа отделки, от голых бетонных стен до состояния как на фото.\n\n"
-        f"Требования к каждому промпту:\n"
-        f"- Один и тот же неподвижный ракурс камеры, совпадающий с фото; без людей и без летающих "
-        f"инструментов в кадре.\n"
-        f"- Стиль: {style_notes}.\n"
-        f"- Этапы идут в логичном порядке, подобранном под тип помещения: черновая бетонная коробка -> "
-        f"инженерные коммуникации, актуальные для этого помещения (электрика; плюс сантехника и "
-        f"гидроизоляция, если это ванная/кухня) -> стяжка пола и штукатурка стен -> финишная отделка "
-        f"стен и пола материалами, уместными для этого типа комнаты -> потолок и освещение -> монтаж "
-        f"мебели, техники и сантехники, характерных именно для этого помещения -> финальная уборка со "
-        f"включением света.\n"
-        f"- ПЕРВЫЙ промпт (этап 1) должен явно и агрессивно требовать полностью убрать всю чистовую "
-        f"отделку с фото: никакой плитки/керамогранита, никакой сантехники, никакой мебели, никакого "
-        f"натяжного потолка и декоративного освещения — только голый необработанный бетон, видимые "
-        f"следы опалубки, пыль. Явно напиши в промпте слова вроде «убрать всю плитку и сантехнику, "
-        f"голые бетонные стены и пол» - иначе генератор картинок оставит комнату почти готовой.\n"
-        f"- Каждый следующий промпт добавляет РОВНО ОДИН слой работ поверх предыдущего этапа (то, что "
-        f"описано в этом промпте) и explicitly не должен содержать чистовые материалы/мебель из более "
-        f"поздних этапов - никаких элементов «забегания вперёд». Разница между соседними этапами "
-        f"должна быть визуально ясной и однозначной.\n"
-        f"- Последний промпт должен точно описывать то, что видно на референсном фото, включая "
-        f"освещение и положение всех предметов.\n"
-        f"- Каждый промпт — самодостаточное описание для генератора фото и видео (2-4 предложения), "
-        f"фотореализм, 4K.\n\n"
-        f"Верни JSON-массив ровно из {num_stages} строк и ничего больше."
+        f"The photo shows a finished room (the final renovation result). First figure out what "
+        f"type of room this is and what work it realistically needs (a bedroom/living room has no "
+        f"plumbing or waterproofing stage, just walls/floor/furniture/decor; a bathroom/kitchen has "
+        f"plumbing, waterproofing, tiling, etc.).\n\n"
+        f"Write exactly {num_stages} prompts in English, one per renovation stage of THIS SPECIFIC "
+        f"room, from a bare concrete shell to the exact state shown in the photo.\n\n"
+        f"Match this style and structure for every prompt (real example for a bathroom - adapt the "
+        f"materials/objects to whatever room type you detected, keep the same terse cinematic "
+        f"tone):\n"
+        f'"Fixed camera, narrow empty bathroom, bare concrete shell, rough grey block walls, '
+        f'exposed concrete slab floor, dust particles in the air, no people, timelapse, '
+        f'photorealistic, static wide angle shot."\n'
+        f'"Fixed camera, same bathroom, large-format dark tiles appearing on the walls one by '
+        f'one, floor tiles covering piece by piece, no people, smooth timelapse assembly, '
+        f'photorealistic."\n\n'
+        f"Requirements for every prompt:\n"
+        f'- Start with "Fixed camera, same [room]" (except stage 1) so the shot stays locked.\n'
+        f"- Keep the exact same room architecture as the photo: same walls, same window and door "
+        f"positions, same room shape and size - never add, remove, resize, or move any window, "
+        f"door, or wall. Only surface finishes and contents change, never the structure.\n"
+        f"- No people, no floating tools, no hands in frame, ever.\n"
+        f"- Style: {style_notes}.\n"
+        f"- Stages follow a logical order for this room type: bare concrete shell -> utilities "
+        f"relevant to this room (electrical; plus plumbing/waterproofing only if it's a "
+        f"bathroom/kitchen) -> screed and plastering -> wall/floor finishing materials appropriate "
+        f"to this room type -> ceiling and lighting -> furniture/fixtures/appliances appropriate to "
+        f"this room -> final cleanup with the lights turning on.\n"
+        f"- Stage 1 must explicitly and aggressively strip away every finished material from the "
+        f'photo: no tile, no fixtures, no furniture, no finished ceiling or decorative lighting - '
+        f'bare unfinished concrete only, formwork marks, dust. State this explicitly (e.g. "all '
+        f'tile and fixtures removed, bare concrete walls and floor") or the image generator will '
+        f"leave the room looking nearly finished.\n"
+        f"- Every later stage adds EXACTLY ONE layer of work on top of the previous stage and must "
+        f"not contain finish materials/furniture that belong to a later stage - no jumping ahead. "
+        f"The difference between consecutive stages must be visually obvious.\n"
+        f"- The last prompt must precisely match what's visible in the reference photo, including "
+        f"lighting and the position of every object.\n"
+        f"- Each prompt is a self-contained 2-4 sentence description for a photo/video generator, "
+        f"photorealistic, 4K.\n\n"
+        f"Return a JSON array of exactly {num_stages} strings and nothing else."
     )
     resp = requests.post(
         f"{OPENROUTER_BASE}/chat/completions",
@@ -159,7 +178,7 @@ def generate_stage_image(api_key: str, model: str, prompt: str, reference_image_
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": prompt + NO_PEOPLE_SUFFIX},
+                        {"type": "text", "text": prompt + NO_PEOPLE_SUFFIX + STRUCTURE_LOCK_SUFFIX},
                         {"type": "image_url", "image_url": {"url": reference_image_data_uri}},
                     ],
                 }
@@ -193,7 +212,7 @@ def create_video_job(
     """Submit a video generation job, return its job id."""
     body = {
         "model": model,
-        "prompt": prompt + NO_PEOPLE_SUFFIX,
+        "prompt": prompt + NO_PEOPLE_SUFFIX + STRUCTURE_LOCK_SUFFIX,
         "duration": duration,
         "aspect_ratio": aspect_ratio,
         "resolution": resolution,
