@@ -62,12 +62,8 @@ didn't like, and the fix is a one-line rename in `create_video_job()` in
 ## Cost control
 
 Video generation is billed per second of output, per clip, on your OpenRouter
-balance:
-
-| Model | ~Price/sec | 7 stages x 8s | 15 stages x 8s |
-|---|---|---|---|
-| `kwaivgi/kling-v3.0-std` (default) | ~$0.10 | ~$5.6 | ~$12 |
-| Veo 3.1 Fast/Standard | ~$0.30-0.75 | ~$17-42 | ~$36-90 |
+balance. `kwaivgi/kling-v3.0-std` (the model this bot uses) is ~$0.10/sec, so
+7 stages x 8s ≈ $5.6, 15 stages x 8s ≈ $12.
 
 Check current pricing at https://openrouter.ai/collections/video-models before a
 big run, and consider adding your own per-user rate limiting / an allowlist of
