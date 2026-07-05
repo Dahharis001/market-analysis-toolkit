@@ -58,7 +58,7 @@ def generate_clips(
         video_url = orc.poll_video_job(cfg.openrouter_api_key, job_id)
 
         clip_path = os.path.join(work_dir, f"stage_{i + 1:02d}.mp4")
-        orc.download_file(video_url, clip_path)
+        orc.download_file(video_url, clip_path, api_key=cfg.openrouter_api_key)
         clip_paths.append(clip_path)
 
         if progress_cb:

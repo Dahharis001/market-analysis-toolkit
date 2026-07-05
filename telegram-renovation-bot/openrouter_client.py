@@ -226,8 +226,10 @@ def poll_video_job(api_key: str, job_id: str, *, timeout_sec: int = 900, interva
         data = resp.json()
         status = data.get("status") or data.get("data", {}).get("status")
         if status in ("completed", "succeeded"):
+            unsigned_urls = data.get("unsigned_urls") or []
             url = (
-                data.get("url")
+                (unsigned_urls[0] if unsigned_urls else None)
+                or data.get("url")
                 or data.get("video_url")
                 or (data.get("output") or {}).get("url")
                 or (data.get("data") or {}).get("url")
@@ -241,8 +243,11 @@ def poll_video_job(api_key: str, job_id: str, *, timeout_sec: int = 900, interva
     raise OpenRouterError(f"Timed out waiting for video job {job_id}")
 
 
-def download_file(url: str, dest_path: str) -> None:
-    with requests.get(url, stream=True, timeout=120) as r:
+def download_file(url: str, dest_path: str, api_key: str | None = None) -> None:
+    # OpenRouter's video content URLs (unsigned_urls) are API endpoints, not public
+    # CDN links - they need the same Authorization header as everything else.
+    headers = _headers(api_key) if api_key else {}
+    with requests.get(url, headers=headers, stream=True, timeout=120) as r:
         r.raise_for_status()
         with open(dest_path, "wb") as f:
             for chunk in r.iter_content(chunk_size=1 << 16):
