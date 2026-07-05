@@ -1,10 +1,11 @@
 # Telegram Renovation Timelapse Bot
 
-Sends a user's finished-bathroom photo to a vision LLM (via OpenRouter) to write N
-renovation-stage prompts, renders one AI still image per stage (image-to-image edit,
-anchored on the reference photo), sends that album to the user, then generates a video
-clip per stage keyframed between consecutive stage images, and stitches everything
-into one crossfaded timelapse that ends on a frame matching the user's original photo.
+Sends a user's finished-room photo (any room type - bathroom, bedroom, kitchen, living
+room, etc.) to a vision LLM (via OpenRouter) to write N renovation-stage prompts,
+renders one AI still image per stage (image-to-image edit, anchored on the reference
+photo), sends that album to the user, then generates a video clip per stage keyframed
+between consecutive stage images, and stitches everything into one crossfaded timelapse
+that ends on a frame matching the user's original photo.
 
 ## How it works
 
@@ -12,9 +13,12 @@ into one crossfaded timelapse that ends on a frame matching the user's original 
    (`STAGE_OPTIONS` in `bot.py`, default 7/10/12/15) to pick how many renovation
    stages to generate.
 2. `openrouter_client.generate_stage_prompts` sends the photo + instructions to a
-   vision-capable chat model, gets back a JSON array of stage prompts (bare concrete
-   shell -> plumbing/electrical -> waterproofing/screed/plaster -> tiling -> ceiling &
-   lighting -> fixtures & furniture -> final cleanup with lights on).
+   vision-capable chat model. The model first identifies what kind of room it's
+   looking at, then gets back a JSON array of stage prompts appropriate to that room
+   type (e.g. bare concrete shell -> electrical, plus plumbing/waterproofing only if
+   it's a bathroom/kitchen -> screed/plaster -> wall & floor finishing with materials
+   fitting that room -> ceiling & lighting -> furniture/fixtures for that room ->
+   final cleanup with lights on).
 3. `image_pipeline.generate_stage_images` renders one AI still photo per stage
    (`openrouter_client.generate_stage_image`, an image-edit call anchored on the
    reference photo so the camera angle/room geometry stay consistent). The last
