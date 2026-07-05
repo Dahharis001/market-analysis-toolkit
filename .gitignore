@@ -5,6 +5,9 @@ __pycache__/
 .venv/
 venv/
 
+# Secrets
+.env
+
 # Trade journal data (personal — don't publish)
 trades.csv
 
