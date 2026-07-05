@@ -5,9 +5,10 @@ import tempfile
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart
-from aiogram.types import FSInputFile, Message
+from aiogram.types import FSInputFile, InputMediaPhoto, Message
 
 import config
+import image_pipeline as ip
 import openrouter_client as orc
 import video_pipeline as vp
 
@@ -32,7 +33,8 @@ async def start(message: Message) -> None:
         "Пришлите фото готовой ванной комнаты (референс — финальный результат ремонта).\n\n"
         f"В подписи к фото можно указать число этапов, например «12» "
         f"(по умолчанию {cfg.default_num_stages}, диапазон {MIN_STAGES}-{MAX_STAGES}).\n\n"
-        "Я сгенерирую таймлапс ремонта от голых стен до вашего фото и пришлю готовое видео. "
+        "Сначала пришлю альбомом фото каждого этапа (сгенерированы ИИ), а затем — готовый "
+        "видео-таймлапс ремонта от голых стен до вашего фото. "
         "Это может занять несколько минут и расходует баланс на вашем OpenRouter-аккаунте."
     )
 
@@ -62,24 +64,44 @@ async def handle_photo(message: Message) -> None:
             await status_msg.edit_text(f"Не получилось разобрать этапы: {e}")
             return
 
-        await status_msg.edit_text(
-            f"Этапы готовы ({len(stages)}). Генерирую видео — это может занять несколько минут…"
-        )
+        await status_msg.edit_text(f"Этапы готовы ({len(stages)}). Генерирую фото каждого этапа…")
 
         loop = asyncio.get_running_loop()
 
-        def progress_cb(i: int, total: int, phase: str) -> None:
-            async def _edit():
-                try:
-                    await status_msg.edit_text(f"Этап {i}/{total}: {phase}…")
-                except Exception:
-                    pass
+        def make_progress_cb(label: str):
+            def cb(i: int, total: int, phase: str = "") -> None:
+                async def _edit():
+                    try:
+                        text = f"{label} {i}/{total}" + (f": {phase}…" if phase else "…")
+                        await status_msg.edit_text(text)
+                    except Exception:
+                        pass
 
-            asyncio.run_coroutine_threadsafe(_edit(), loop)
+                asyncio.run_coroutine_threadsafe(_edit(), loop)
+
+            return cb
+
+        try:
+            stage_images = await loop.run_in_executor(
+                None, ip.generate_stage_images, cfg, ref_path, stages, tmp, make_progress_cb("Фото")
+            )
+        except Exception as e:
+            log.exception("stage image generation failed")
+            await status_msg.edit_text(f"Не получилось сгенерировать фото этапов: {e}")
+            return
+
+        try:
+            media = [InputMediaPhoto(media=FSInputFile(p)) for p in stage_images]
+            for start in range(0, len(media), 10):
+                await message.answer_media_group(media[start:start + 10])
+        except Exception:
+            log.exception("failed to send stage image album")
+
+        await status_msg.edit_text("Фото этапов отправлены. Генерирую видео — это может занять несколько минут…")
 
         try:
             clips = await loop.run_in_executor(
-                None, vp.generate_clips, cfg, ref_path, stages, tmp, progress_cb
+                None, vp.generate_clips, cfg, stages, stage_images, tmp, make_progress_cb("Видео")
             )
             final_path = os.path.join(tmp, "final.mp4")
             await loop.run_in_executor(None, vp.stitch_with_crossfade, clips, final_path)

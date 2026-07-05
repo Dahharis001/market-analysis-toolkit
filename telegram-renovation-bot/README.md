@@ -1,10 +1,10 @@
 # Telegram Renovation Timelapse Bot
 
 Sends a user's finished-bathroom photo to a vision LLM (via OpenRouter) to write N
-renovation-stage prompts, generates a video clip per stage (via OpenRouter's video
-generation API), chains them together with first/last-frame image conditioning so the
-room stays visually continuous, and stitches everything into one crossfaded timelapse
-that ends on a frame matching the user's original photo.
+renovation-stage prompts, renders one AI still image per stage (image-to-image edit,
+anchored on the reference photo), sends that album to the user, then generates a video
+clip per stage keyframed between consecutive stage images, and stitches everything
+into one crossfaded timelapse that ends on a frame matching the user's original photo.
 
 ## How it works
 
@@ -15,13 +15,17 @@ that ends on a frame matching the user's original photo.
    vision-capable chat model, gets back a JSON array of stage prompts (bare concrete
    shell -> plumbing/electrical -> waterproofing/screed/plaster -> tiling -> ceiling &
    lighting -> fixtures & furniture -> final cleanup with lights on).
-3. `video_pipeline.generate_clips` submits one video generation job per stage:
-   - Each stage (after the first) is conditioned on the **last frame of the previous
-     clip** (extracted locally with `ffmpeg`), so the geometry doesn't jump between
-     stages.
-   - The **final** stage is additionally conditioned on the user's real reference
-     photo as its last-frame target, so the ending matches exactly.
-4. `video_pipeline.stitch_with_crossfade` concatenates all clips with a short
+3. `image_pipeline.generate_stage_images` renders one AI still photo per stage
+   (`openrouter_client.generate_stage_image`, an image-edit call anchored on the
+   reference photo so the camera angle/room geometry stay consistent). The last
+   "stage image" is always the user's real photo, unmodified. All of these are sent
+   to the user as a Telegram photo album before any video is generated, so they can
+   see the direction before it costs video money.
+4. `video_pipeline.generate_clips` submits one video generation job per stage,
+   keyframed with `image` = previous stage's still and `last_frame_image` = this
+   stage's still - i.e. each clip animates from one AI-designed keyframe to the
+   next, rather than drifting off whatever the previous clip happened to render.
+5. `video_pipeline.stitch_with_crossfade` concatenates all clips with a short
    crossfade (`ffmpeg xfade`) into `final.mp4`, which gets sent back to the user.
 
 ## Setup
@@ -49,26 +53,31 @@ is **not** meant to run inside an ephemeral cloud dev sandbox.
 ## Before you run a big batch: test with 1-2 stages first
 
 This code was written in a sandbox where outbound access to `openrouter.ai` was
-blocked by network policy, so the video generation request/response field names
+blocked by network policy, so neither the image generation call
+(`generate_stage_image` - request uses `modalities: ["image","text"]`, response is
+read from `message.images[0].image_url.url`) nor the video generation fields
 (`image`, `last_frame_image`, `duration`, `aspect_ratio`, `resolution`,
-`generate_audio` in `openrouter_client.py`) could not be smoke-tested against the
-live API - they're taken from OpenRouter's public docs/announcement, but OpenRouter
-could use slightly different names. **Send yourself a test photo with caption `3`
-first.** If a request is rejected, the bot will show you the full error body from
-OpenRouter in the status message - it will tell you exactly which field OpenRouter
-didn't like, and the fix is a one-line rename in `create_video_job()` in
-`openrouter_client.py`.
+`generate_audio` in `create_video_job`) could be smoke-tested against the live API.
+They're taken from OpenRouter's public docs/announcement, but OpenRouter could use
+slightly different names. **Send yourself a test photo with caption `3` first.** If
+a request is rejected, the bot shows you the full error body from OpenRouter in the
+status message - it will tell you exactly which field it didn't like, and the fix is
+a one-line rename in `openrouter_client.py`.
 
 ## Cost control
 
-Video generation is billed per second of output, per clip, on your OpenRouter
-balance. `kwaivgi/kling-v3.0-std` (the model this bot uses) is ~$0.10/sec, so
-7 stages x 8s ≈ $5.6, 15 stages x 8s ≈ $12.
+Both APIs bill per call on your OpenRouter balance:
 
-Check current pricing at https://openrouter.ai/collections/video-models before a
-big run, and consider adding your own per-user rate limiting / an allowlist of
-Telegram user IDs in `bot.py` before exposing this bot publicly, since every photo
-someone sends spends your OpenRouter balance.
+- **Images**: one `IMAGE_MODEL` call per stage except the last (N-1 calls total).
+  Gemini 2.5 Flash Image is cheap per image (well under $0.10 typically) - check
+  current pricing at https://openrouter.ai/collections/image-models.
+- **Video**: billed per second of output, per clip. `kwaivgi/kling-v3.0-std` (the
+  model this bot uses) is ~$0.10/sec, so 7 stages x 8s ≈ $5.6, 15 stages x 8s ≈ $12.
+  Check current pricing at https://openrouter.ai/collections/video-models.
+
+Consider adding your own per-user rate limiting / an allowlist of Telegram user IDs
+in `bot.py` before exposing this bot publicly, since every photo someone sends
+spends your OpenRouter balance.
 
 ## Security
 

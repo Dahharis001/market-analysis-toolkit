@@ -1,9 +1,12 @@
-"""Thin client for the two OpenRouter APIs this bot needs:
+"""Thin client for the three OpenRouter APIs this bot needs:
 
 1. Chat completions (stable, documented, OpenAI-compatible) - used to look at the
    reference photo and write the per-stage renovation prompts.
-2. Video generation (POST /api/v1/videos, GET /api/v1/videos/{id}) - used to turn
-   each stage prompt into a video clip.
+2. Image generation via chat completions with modalities=["image","text"] - used to
+   render one still image per stage, anchored on the reference photo (image-to-image
+   edit), before any video is generated.
+3. Video generation (POST /api/v1/videos, GET /api/v1/videos/{id}) - used to turn
+   each stage into a video clip, keyframed between that stage's image and the next.
 
 NOTE on the video generation field names: outbound access to openrouter.ai was
 blocked by this sandbox's network policy while this file was written, so the
@@ -80,7 +83,7 @@ def generate_stage_prompts(
         f"монтаж сантехники и мебели -> финальная уборка со включением света.\n"
         f"- Последний промпт должен точно описывать то, что видно на референсном фото, включая "
         f"освещение и положение всех предметов.\n"
-        f"- Каждый промпт — самодостаточное описание для видео-генератора (2-4 предложения), "
+        f"- Каждый промпт — самодостаточное описание для генератора фото и видео (2-4 предложения), "
         f"фотореализм, 4K.\n\n"
         f"Верни JSON-массив ровно из {num_stages} строк и ничего больше."
     )
@@ -108,6 +111,40 @@ def generate_stage_prompts(
     data = resp.json()
     content = data["choices"][0]["message"]["content"]
     return _parse_json_string_array(content, num_stages)
+
+
+def generate_stage_image(api_key: str, model: str, prompt: str, reference_image_data_uri: str) -> str:
+    """Image-edit the reference photo into an earlier renovation stage.
+
+    Uses OpenRouter's unified image API convention: a normal /chat/completions
+    request with modalities=["image","text"]; the generated image comes back as a
+    data URI in choices[0].message.images[0].image_url.url.
+    """
+    resp = requests.post(
+        f"{OPENROUTER_BASE}/chat/completions",
+        headers=_headers(api_key),
+        json={
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": reference_image_data_uri}},
+                    ],
+                }
+            ],
+            "modalities": ["image", "text"],
+        },
+        timeout=180,
+    )
+    if resp.status_code >= 400:
+        raise OpenRouterError(f"Image generation failed ({resp.status_code}): {resp.text[:800]}")
+    data = resp.json()
+    images = (data["choices"][0]["message"].get("images")) or []
+    if not images:
+        raise OpenRouterError(f"Model did not return an image: {json.dumps(data)[:500]}")
+    return images[0]["image_url"]["url"]
 
 
 def create_video_job(
