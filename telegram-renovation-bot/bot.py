@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shutil
 import tempfile
 
 from aiogram import Bot, Dispatcher, F
@@ -34,10 +35,13 @@ STYLE_NOTES = (
 
 STAGE_OPTIONS = (7, 10, 12, 15)
 
-# In-memory: user_id -> Telegram file_id of the reference photo they just sent,
-# waiting for them to pick a stage count. Fine for a single-process polling bot;
-# would need real storage (Redis/db) if this bot is ever scaled to multiple workers.
+# In-memory state. Fine for a single-process polling bot; would need real storage
+# (Redis/db) if this bot is ever scaled to multiple workers.
+# user_id -> Telegram file_id of the reference photo, waiting for a stage-count pick.
 _pending_photos: dict[int, str] = {}
+# user_id -> {"work_dir", "ref_path", "stages", "stage_images"}, waiting for the user
+# to approve (or ask to regenerate) the stage-photo album before video generation starts.
+_pending_generations: dict[int, dict] = {}
 
 
 def _stage_count_keyboard() -> InlineKeyboardMarkup:
@@ -48,6 +52,38 @@ def _stage_count_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def _approval_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Начать видео", callback_data="approve_video")],
+            [InlineKeyboardButton(text="Перегенерировать фото", callback_data="regen_photos")],
+        ]
+    )
+
+
+def _make_progress_cb(status_msg: Message, loop: asyncio.AbstractEventLoop, label: str):
+    def cb(i: int, total: int, phase: str = "") -> None:
+        async def _edit():
+            try:
+                text = f"{label} {i}/{total}" + (f": {phase}…" if phase else "…")
+                await status_msg.edit_text(text)
+            except Exception:
+                pass
+
+        asyncio.run_coroutine_threadsafe(_edit(), loop)
+
+    return cb
+
+
+async def _send_stage_album(chat_id: int, stage_images: list[str]) -> None:
+    try:
+        media = [InputMediaPhoto(media=FSInputFile(p)) for p in stage_images]
+        for start in range(0, len(media), 10):
+            await bot.send_media_group(chat_id=chat_id, media=media[start:start + 10])
+    except Exception:
+        log.exception("failed to send stage image album")
+
+
 @dp.message(CommandStart())
 async def start(message: Message) -> None:
     await message.answer(
@@ -55,8 +91,9 @@ async def start(message: Message) -> None:
         "это референс, финальный результат ремонта.\n\n"
         "Я спрошу, сколько этапов ремонта показать (7 / 10 / 12 / 15), затем:\n"
         "1) один ИИ распишет промпт для каждого этапа по вашему фото,\n"
-        "2) по этим промптам сгенерируются фото каждого этапа (пришлю альбомом),\n"
-        "3) по этим фото соберётся один плавный видео-таймлапс.\n\n"
+        "2) по этим промптам сгенерируются фото каждого этапа (пришлю альбомом) - вы сможете "
+        "перегенерировать их или дать добро,\n"
+        "3) только после вашего подтверждения по этим фото соберётся видео-таймлапс.\n\n"
         "Это может занять несколько минут и расходует баланс на вашем OpenRouter-аккаунте."
     )
 
@@ -77,73 +114,113 @@ async def handle_stage_choice(callback: CallbackQuery) -> None:
         return
 
     num_stages = int(callback.data.split(":", 1)[1])
-    await callback.message.edit_text(f"Этапов: {num_stages}. Анализирую референс…")
     status_msg = callback.message
+    await status_msg.edit_text(f"Этапов: {num_stages}. Анализирую референс…")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        ref_path = os.path.join(tmp, "reference.jpg")
-        await bot.download(file_id, destination=ref_path)
+    work_dir = tempfile.mkdtemp(prefix="renov_")
+    ref_path = os.path.join(work_dir, "reference.jpg")
+    await bot.download(file_id, destination=ref_path)
 
-        try:
-            image_data_uri = orc.image_to_data_uri(ref_path)
-            stages = orc.generate_stage_prompts(
-                cfg.openrouter_api_key, cfg.stage_prompt_model, image_data_uri, num_stages, STYLE_NOTES
-            )
-        except Exception as e:
-            log.exception("stage prompt generation failed")
-            await status_msg.edit_text(f"Не получилось разобрать этапы: {e}")
-            return
-
-        await status_msg.edit_text(f"Этапы готовы ({len(stages)}). Генерирую фото каждого этапа…")
-
-        loop = asyncio.get_running_loop()
-
-        def make_progress_cb(label: str):
-            def cb(i: int, total: int, phase: str = "") -> None:
-                async def _edit():
-                    try:
-                        text = f"{label} {i}/{total}" + (f": {phase}…" if phase else "…")
-                        await status_msg.edit_text(text)
-                    except Exception:
-                        pass
-
-                asyncio.run_coroutine_threadsafe(_edit(), loop)
-
-            return cb
-
-        try:
-            stage_images = await loop.run_in_executor(
-                None, ip.generate_stage_images, cfg, ref_path, stages, tmp, make_progress_cb("Фото")
-            )
-        except Exception as e:
-            log.exception("stage image generation failed")
-            await status_msg.edit_text(f"Не получилось сгенерировать фото этапов: {e}")
-            return
-
-        try:
-            media = [InputMediaPhoto(media=FSInputFile(p)) for p in stage_images]
-            for start in range(0, len(media), 10):
-                await bot.send_media_group(chat_id=status_msg.chat.id, media=media[start:start + 10])
-        except Exception:
-            log.exception("failed to send stage image album")
-
-        await status_msg.edit_text("Фото этапов отправлены. Генерирую видео — это может занять несколько минут…")
-
-        try:
-            clips = await loop.run_in_executor(
-                None, vp.generate_clips, cfg, stages, stage_images, tmp, make_progress_cb("Видео")
-            )
-            final_path = os.path.join(tmp, "final.mp4")
-            await loop.run_in_executor(None, vp.stitch_with_crossfade, clips, final_path)
-        except Exception as e:
-            log.exception("video pipeline failed")
-            await status_msg.edit_text(f"Ошибка генерации видео: {e}")
-            return
-
-        await status_msg.edit_text("Готово! Отправляю видео…")
-        await bot.send_video(
-            chat_id=status_msg.chat.id, video=FSInputFile(final_path), caption="Таймлапс ремонта готов"
+    try:
+        image_data_uri = orc.image_to_data_uri(ref_path)
+        stages = orc.generate_stage_prompts(
+            cfg.openrouter_api_key, cfg.stage_prompt_model, image_data_uri, num_stages, STYLE_NOTES
         )
+    except Exception as e:
+        log.exception("stage prompt generation failed")
+        await status_msg.edit_text(f"Не получилось разобрать этапы: {e}")
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return
+
+    await status_msg.edit_text(f"Этапы готовы ({len(stages)}). Генерирую фото каждого этапа…")
+
+    loop = asyncio.get_running_loop()
+    try:
+        stage_images = await loop.run_in_executor(
+            None, ip.generate_stage_images, cfg, ref_path, stages, work_dir,
+            _make_progress_cb(status_msg, loop, "Фото"),
+        )
+    except Exception as e:
+        log.exception("stage image generation failed")
+        await status_msg.edit_text(f"Не получилось сгенерировать фото этапов: {e}")
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return
+
+    _pending_generations[user_id] = {
+        "work_dir": work_dir,
+        "ref_path": ref_path,
+        "stages": stages,
+        "stage_images": stage_images,
+    }
+
+    await _send_stage_album(status_msg.chat.id, stage_images)
+    await status_msg.edit_text(
+        "Фото этапов отправлены. Устраивает результат?", reply_markup=_approval_keyboard()
+    )
+
+
+@dp.callback_query(F.data == "regen_photos")
+async def handle_regen_photos(callback: CallbackQuery) -> None:
+    await callback.answer("Перегенерирую фото…")
+    user_id = callback.from_user.id
+    pending = _pending_generations.get(user_id)
+    if not pending:
+        await callback.message.edit_text("Сессия устарела, пришлите фото заново.")
+        return
+
+    status_msg = callback.message
+    await status_msg.edit_text("Перегенерирую фото этапов…")
+
+    loop = asyncio.get_running_loop()
+    try:
+        stage_images = await loop.run_in_executor(
+            None, ip.generate_stage_images, cfg, pending["ref_path"], pending["stages"],
+            pending["work_dir"], _make_progress_cb(status_msg, loop, "Фото"),
+        )
+    except Exception as e:
+        log.exception("stage image regeneration failed")
+        await status_msg.edit_text(f"Не получилось перегенерировать фото: {e}")
+        return
+
+    pending["stage_images"] = stage_images
+    await _send_stage_album(status_msg.chat.id, stage_images)
+    await status_msg.edit_text(
+        "Новые фото отправлены. Устраивает результат?", reply_markup=_approval_keyboard()
+    )
+
+
+@dp.callback_query(F.data == "approve_video")
+async def handle_approve_video(callback: CallbackQuery) -> None:
+    await callback.answer()
+    user_id = callback.from_user.id
+    pending = _pending_generations.pop(user_id, None)
+    if not pending:
+        await callback.message.edit_text("Сессия устарела, пришлите фото заново.")
+        return
+
+    status_msg = callback.message
+    work_dir = pending["work_dir"]
+    await status_msg.edit_text("Генерирую видео — это может занять несколько минут…")
+
+    loop = asyncio.get_running_loop()
+    try:
+        clips = await loop.run_in_executor(
+            None, vp.generate_clips, cfg, pending["stages"], pending["stage_images"], work_dir,
+            _make_progress_cb(status_msg, loop, "Видео"),
+        )
+        final_path = os.path.join(work_dir, "final.mp4")
+        await loop.run_in_executor(None, vp.stitch_with_crossfade, clips, final_path)
+    except Exception as e:
+        log.exception("video pipeline failed")
+        await status_msg.edit_text(f"Ошибка генерации видео: {e}")
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return
+
+    await status_msg.edit_text("Готово! Отправляю видео…")
+    await bot.send_video(
+        chat_id=status_msg.chat.id, video=FSInputFile(final_path), caption="Таймлапс ремонта готов"
+    )
+    shutil.rmtree(work_dir, ignore_errors=True)
 
 
 async def main() -> None:

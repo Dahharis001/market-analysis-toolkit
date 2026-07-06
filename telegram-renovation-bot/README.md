@@ -23,13 +23,16 @@ that ends on a frame matching the user's original photo.
    (`openrouter_client.generate_stage_image`, an image-edit call anchored on the
    reference photo so the camera angle/room geometry stay consistent). The last
    "stage image" is always the user's real photo, unmodified. All of these are sent
-   to the user as a Telegram photo album before any video is generated, so they can
-   see the direction before it costs video money.
-4. `video_pipeline.generate_clips` submits one video generation job per stage,
+   to the user as a Telegram photo album before any video is generated.
+4. The bot then stops and waits: it shows two buttons, "Начать видео" (approve) and
+   "Перегенерировать фото" (regenerate the stage album with the same prompts).
+   Nothing video-related runs until the user explicitly approves - this is the gate
+   that keeps a bad photo set from turning into wasted video spend.
+5. `video_pipeline.generate_clips` submits one video generation job per stage,
    keyframed with `image` = previous stage's still and `last_frame_image` = this
    stage's still - i.e. each clip animates from one AI-designed keyframe to the
    next, rather than drifting off whatever the previous clip happened to render.
-5. `video_pipeline.stitch_with_crossfade` concatenates all clips with a short
+6. `video_pipeline.stitch_with_crossfade` concatenates all clips with a short
    crossfade (`ffmpeg xfade`) into `final.mp4`, which gets sent back to the user.
 
 ## Setup
