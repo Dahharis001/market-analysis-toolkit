@@ -43,7 +43,9 @@ NO_PEOPLE_SUFFIX = (
 STRUCTURE_LOCK_SUFFIX = (
     " Keep the exact same room architecture as the original reference photo: same walls, same "
     "window and door positions and sizes, same room shape and proportions. Do not add, remove, "
-    "resize, or move any window, door, or wall - only surface finishes and contents change."
+    "resize, or move any window, door, or wall - only surface finishes and contents change. If "
+    "the reference photo has no window, do not add sunlight, daylight, or any window - use only "
+    "artificial lighting."
 )
 
 
@@ -112,9 +114,14 @@ def generate_stage_prompts(
         f'photorealistic."\n\n'
         f"Requirements for every prompt:\n"
         f'- Start with "Fixed camera, same [room]" (except stage 1) so the shot stays locked.\n'
-        f"- Keep the exact same room architecture as the photo: same walls, same window and door "
-        f"positions, same room shape and size - never add, remove, resize, or move any window, "
-        f"door, or wall. Only surface finishes and contents change, never the structure.\n"
+        f"- Keep the exact same room architecture as the photo: same walls, same room shape and "
+        f"size - never add, remove, resize, or move any door or wall. Only surface finishes and "
+        f"contents change, never the structure.\n"
+        f"- CAREFULLY check the reference photo for windows before writing anything: if the photo "
+        f"shows NO window, then NEVER mention a window, sunlight, daylight, or light beams in ANY "
+        f"stage - light every stage with a plain work lamp / bare bulb / artificial light glow "
+        f"instead. If the photo does show a window, keep it in that exact same position and size "
+        f"in every stage. Do not invent a window just because construction scenes often have one.\n"
         f"- No people, no floating tools, no hands in frame, ever.\n"
         f"- Style: {style_notes}.\n"
         f"- Stages follow a logical order for this room type: bare concrete shell -> utilities "
