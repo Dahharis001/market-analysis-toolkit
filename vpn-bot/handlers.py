@@ -103,7 +103,6 @@ async def _handle_callback(session, tg, callback_query):
         )
         return
 
-
     if data.startswith("pay_platega:"):
         plan_id = data.split(":", 1)[1]
         plan = PLANS.get(plan_id)
@@ -129,7 +128,7 @@ async def _handle_callback(session, tg, callback_query):
             await tg.answer_callback_query(callback_query["id"], "Тариф не найден")
             return
         result = await cryptobot_api.create_invoice(
-            session, plan["price"], f"Подписка VPN: {plan['label']}", chat_id, plan_id
+            session, plan["price"], f"Оплата подписки: {plan['label']}", chat_id, plan_id
         )
         state.pending_payments[result["invoice_id"]] = {"chat_id": chat_id, "plan_id": plan_id, "provider": "cryptobot"}
         state.save()
@@ -139,6 +138,7 @@ async def _handle_callback(session, tg, callback_query):
             f"Оплатите тариф «{plan['label']}» по ссылке ниже (криптовалютой USDT, TON или BTC). После оплаты доступ выдастся автоматически:\n\n{result['pay_url']}",
         )
         return
+
     if data == "withdraw":
         user = state.ensure_user(chat_id)
         if user["ref_balance"] < config.MIN_WITHDRAWAL_RUB:

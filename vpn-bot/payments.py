@@ -55,6 +55,8 @@ async def _check_once(session, tg):
         except Exception:
             log.exception("status check failed for %s", transaction_id)
             continue
+
+
 async def _on_paid(tg, transaction_id, pending):
     chat_id = pending["chat_id"]
     plan = PLANS[pending["plan_id"]]
