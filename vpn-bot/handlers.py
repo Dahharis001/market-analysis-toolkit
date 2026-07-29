@@ -4,6 +4,7 @@ import config
 import menus
 import platega_api
 import cryptobot_api
+import openrouter_api
 from plans import PLANS, TRIAL_DAYS
 from state import state
 from subscriptions import activate_subscription
@@ -11,6 +12,7 @@ from subscriptions import activate_subscription
 log = logging.getLogger("handlers")
 
 BOT_USERNAME = None  # set by main.py after getMe
+SUPPORT_MODE_USERS = set()  # chat_ids currently chatting with the AI support assistant
 
 
 async def handle_update(session, tg, update):
@@ -28,6 +30,7 @@ async def _handle_message(session, tg, message):
     text = (message.get("text") or "").strip()
 
     if text.startswith("/start"):
+        SUPPORT_MODE_USERS.discard(chat_id)
         referrer = None
         parts = text.split(maxsplit=1)
         if len(parts) == 2 and parts[1].startswith("ref_"):
@@ -42,7 +45,22 @@ async def _handle_message(session, tg, message):
         await tg.send_message(chat_id, menus.WELCOME_TEXT, reply_markup=menus.MAIN_KB)
         return
 
+    if text == "❓ Поддержка":
+        SUPPORT_MODE_USERS.add(chat_id)
+        await tg.send_message(
+            chat_id,
+            "❓ Задайте вопрос — отвечает ИИ-ассистент поддержки. Чтобы выйти, нажмите «⬅️ Выйти из поддержки».",
+            reply_markup=menus.SUPPORT_EXIT_KB,
+        )
+        return
+
+    if text == "⬅️ Выйти из поддержки":
+        SUPPORT_MODE_USERS.discard(chat_id)
+        await tg.send_message(chat_id, "Вы вышли из режима поддержки.", reply_markup=menus.MAIN_KB)
+        return
+
     if text == "🎁 Пробный доступ":
+        SUPPORT_MODE_USERS.discard(chat_id)
         user = state.ensure_user(chat_id)
         if user.get("trial_used"):
             await tg.send_message(chat_id, "Пробный период уже был использован. Выберите платный тариф кнопкой «💳 Купить / продлить».")
@@ -63,21 +81,33 @@ async def _handle_message(session, tg, message):
         return
 
     if text == "💳 Купить / продлить":
+        SUPPORT_MODE_USERS.discard(chat_id)
         await tg.send_message(chat_id, "Выберите тариф:", reply_markup=menus.plans_inline_kb())
         return
 
     if text == "👤 Мой профиль":
+        SUPPORT_MODE_USERS.discard(chat_id)
         user = state.ensure_user(chat_id)
         await tg.send_message(chat_id, menus.profile_text(user))
         return
 
     if text == "🤝 Партнёрка":
+        SUPPORT_MODE_USERS.discard(chat_id)
         user = state.ensure_user(chat_id)
         await tg.send_message(
             chat_id,
             menus.referral_text(BOT_USERNAME, chat_id, user, config.MIN_WITHDRAWAL_RUB, config.REFERRAL_PERCENT),
             reply_markup=menus.withdraw_inline_kb(),
         )
+        return
+
+    if chat_id in SUPPORT_MODE_USERS and text:
+        try:
+            answer = await openrouter_api.chat(session, menus.SUPPORT_SYSTEM_PROMPT, text)
+        except Exception:
+            log.exception("support AI call failed for %s", chat_id)
+            answer = "⚠️ Не удалось получить ответ от ассистента, попробуйте ещё раз через пару минут."
+        await tg.send_message(chat_id, answer or "Не смог сформулировать ответ, попробуйте переформулировать вопрос.")
         return
 
     await tg.send_message(chat_id, "Не понял команду. Используйте кнопки меню.", reply_markup=menus.MAIN_KB)
