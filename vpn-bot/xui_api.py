@@ -63,12 +63,15 @@ class XuiClient:
 
     async def _get_inbound(self):
         session = await self._ensure_session()
-        url = f"{config.XUI_PANEL_URL}/panel/api/inbounds/get/{config.XUI_INBOUND_ID}"
+        url = f"{config.XUI_PANEL_URL}/panel/api/inbounds/list"
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as r:
             data = await r.json()
             if not data.get("success"):
-                raise XuiError(f"get inbound failed: {data}")
-            return data["obj"]
+                raise XuiError(f"list inbounds failed: {data}")
+            for inbound in data["obj"]:
+                if inbound["id"] == config.XUI_INBOUND_ID:
+                    return inbound
+            raise XuiError(f"inbound id {config.XUI_INBOUND_ID} not found in inbounds list")
 
     async def add_client(self, email, expiry_time_ms, total_gb=0):
         """Creates a VLESS Reality client on the configured inbound. Returns (client_uuid, share_link)."""
