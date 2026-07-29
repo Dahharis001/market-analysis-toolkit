@@ -17,7 +17,7 @@ async def handle_sub(request):
         return web.json_response({"error": "not found"}, status=404)
 
     reality_info = await xui.get_reality_info()
-    profile = singbox_profile.build_config(reality_info, user["xui_uuid"], remark=f"vpn-bot-{chat_id}")
+    profile = singbox_profile.build_config(reality_info, user["xui_uuid"], remark=f"access-{chat_id}")
     return web.json_response(profile)
 
 

@@ -1,10 +1,10 @@
 RU_GEOIP_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/ru.srs"
 RU_GEOSITE_URL = "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/category-ru.srs"
 
-PROXY_TAG = "vpn-bot-proxy"
+PROXY_TAG = "secure-proxy"
 
 
-def build_config(reality_info, client_uuid, remark="vpn-bot"):
+def build_config(reality_info, client_uuid, remark="access"):
     """Sing-box subscription profile: VLESS Reality proxy + bypass for Russian sites/IPs."""
     return {
         "dns": {

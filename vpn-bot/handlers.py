@@ -88,7 +88,7 @@ async def _handle_callback(session, tg, callback_query):
             await tg.answer_callback_query(callback_query["id"], "Тариф не найден")
             return
         result = await platega_api.create_payment(
-            session, plan["price"], f"Подписка VPN: {plan['label']}", chat_id
+            session, plan["price"], f"Оплата подписки: {plan['label']}", chat_id
         )
         state.pending_payments[result["transactionId"]] = {"chat_id": chat_id, "plan_id": plan_id}
         state.save()
