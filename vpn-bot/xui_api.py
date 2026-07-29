@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import uuid
 from urllib.parse import quote
 
@@ -29,11 +30,26 @@ class XuiClient:
             await self._login()
         return self._session
 
+    async def _get_csrf_token(self):
+        """The panel's login form is CSRF-protected: the page embeds a token in a
+        <meta name="csrf-token"> tag that must be echoed back as X-CSRF-Token on POST /login."""
+        async with self._session.get(
+            f"{config.XUI_PANEL_URL}/", timeout=aiohttp.ClientTimeout(total=20)
+        ) as r:
+            html = await r.text()
+        match = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
+        if not match:
+            raise XuiError("could not find csrf-token meta tag on 3x-ui login page")
+        return match.group(1)
+
     async def _login(self):
+        csrf_token = await self._get_csrf_token()
         url = f"{config.XUI_PANEL_URL}/login"
+        headers = {"X-CSRF-Token": csrf_token}
         async with self._session.post(
             url,
-            data={"username": config.XUI_USERNAME, "password": config.XUI_PASSWORD},
+            json={"username": config.XUI_USERNAME, "password": config.XUI_PASSWORD},
+            headers=headers,
             timeout=aiohttp.ClientTimeout(total=20),
         ) as r:
             data = await r.json()

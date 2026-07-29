@@ -47,9 +47,14 @@ async def _handle_message(session, tg, message):
         if user.get("trial_used"):
             await tg.send_message(chat_id, "Пробный период уже был использован. Выберите платный тариф кнопкой «💳 Купить / продлить».")
             return
+        try:
+            link, expiry_ms = await activate_subscription(chat_id, TRIAL_DAYS)
+        except Exception:
+            log.exception("trial activation failed for %s", chat_id)
+            await tg.send_message(chat_id, "⚠️ Не удалось выдать доступ, техническая ошибка. Попробуйте ещё раз через пару минут.")
+            return
         user["trial_used"] = True
         state.save()
-        link, expiry_ms = await activate_subscription(chat_id, TRIAL_DAYS)
         sub_url = f"{config.SUB_BASE_URL}/sub/{user['sub_token']}"
         await tg.send_message(
             chat_id,
@@ -130,7 +135,7 @@ async def _handle_callback(session, tg, callback_query):
         result = await cryptobot_api.create_invoice(
             session, plan["price"], f"Оплата подписки: {plan['label']}", chat_id, plan_id
         )
-        state.pending_payments[result["invoice_id"]] = {"chat_id": chat_id, "plan_id": plan_id, "provider": "cryptobot"}
+        state.pending_payments[str(result["invoice_id"])] = {"chat_id": chat_id, "plan_id": plan_id, "provider": "cryptobot"}
         state.save()
         await tg.answer_callback_query(callback_query["id"])
         await tg.send_message(

@@ -47,7 +47,7 @@ async def create_invoice(session, amount_rub, description, chat_id, plan_id):
 async def get_invoices(session, invoice_ids):
     if not invoice_ids:
         return []
-    result = await _request(session, "GET", f"{config.CRYPTOBOT_BASE}/getInvoices", params={"invoice_ids": ",".join(invoice_ids)})
+    result = await _request(session, "GET", f"{config.CRYPTOBOT_BASE}/getInvoices", params={"invoice_ids": ",".join(str(i) for i in invoice_ids)})
     return result.get("items", [])
 
 
