@@ -1,5 +1,6 @@
 import json
 import os
+import secrets
 import tempfile
 
 import config
@@ -21,6 +22,8 @@ class State:
             "expiry_ms": 0,
             "ref_balance": 0.0,
             "ref_count": 0,
+            "trial_used": False,
+            "sub_token": secrets.token_hex(16),
         }
 
     def ensure_user(self, chat_id, referrer=None):
@@ -28,7 +31,16 @@ class State:
             self.users[chat_id] = self._new_user(referrer)
         elif referrer is not None and self.users[chat_id]["referrer"] is None and referrer != chat_id:
             self.users[chat_id]["referrer"] = referrer
-        return self.users[chat_id]
+        user = self.users[chat_id]
+        if not user.get("sub_token"):
+            user["sub_token"] = secrets.token_hex(16)
+        return user
+
+    def find_by_sub_token(self, token):
+        for chat_id, user in self.users.items():
+            if user.get("sub_token") == token:
+                return chat_id, user
+        return None, None
 
     def _load(self):
         if not os.path.exists(self.path):

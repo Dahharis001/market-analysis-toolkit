@@ -4,4 +4,6 @@ PLANS = {
     "p12": {"label": "12 месяцев — 1200 ₽", "days": 365, "price": 1200},
 }
 
+TRIAL_DAYS = 3
+
 DAY_MS = 24 * 60 * 60 * 1000

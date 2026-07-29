@@ -121,20 +121,34 @@ class XuiClient:
             if not data.get("success"):
                 log.warning("delClient failed for %s: %s", client_uuid, data)
 
-    def _build_share_link(self, inbound, client_uuid, flow, remark):
+    def _reality_params(self, inbound):
         stream = json.loads(inbound["streamSettings"])
         reality = stream["realitySettings"]
-        pbk = reality["settings"]["publicKey"]
-        fp = reality["settings"].get("fingerprint", "chrome")
-        sni = reality["serverNames"][0]
-        sid = reality["shortIds"][0] if reality["shortIds"] else ""
-        spx = reality["settings"].get("spiderX", "") or "/"
+        return {
+            "port": inbound["port"],
+            "network": stream.get("network", "tcp"),
+            "pbk": reality["settings"]["publicKey"],
+            "fp": reality["settings"].get("fingerprint", "chrome"),
+            "sni": reality["serverNames"][0],
+            "sid": reality["shortIds"][0] if reality["shortIds"] else "",
+            "spx": reality["settings"].get("spiderX", "") or "/",
+        }
 
+    def _build_share_link(self, inbound, client_uuid, flow, remark):
+        p = self._reality_params(inbound)
         params = (
-            f"type={quote(stream.get('network', 'tcp'))}&security=reality&pbk={quote(pbk)}&fp={quote(fp)}"
-            f"&sni={quote(sni)}&sid={quote(sid)}&spx={quote(spx)}&flow={quote(flow)}"
+            f"type={quote(p['network'])}&security=reality&pbk={quote(p['pbk'])}&fp={quote(p['fp'])}"
+            f"&sni={quote(p['sni'])}&sid={quote(p['sid'])}&spx={quote(p['spx'])}&flow={quote(flow)}"
         )
-        return f"vless://{client_uuid}@{config.XUI_SERVER_HOST}:{inbound['port']}?{params}#{quote(remark)}"
+        return f"vless://{client_uuid}@{config.XUI_SERVER_HOST}:{p['port']}?{params}#{quote(remark)}"
+
+    async def get_reality_info(self):
+        """Raw reality params for the inbound, used to build sing-box subscription profiles."""
+        inbound = await self._get_inbound()
+        info = self._reality_params(inbound)
+        info["flow"] = DEFAULT_FLOW
+        info["host"] = config.XUI_SERVER_HOST
+        return info
 
 
 xui = XuiClient()

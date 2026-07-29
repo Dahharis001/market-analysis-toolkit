@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 import config
+import menus
 import platega_api
 from plans import PLANS
 from state import state
@@ -48,11 +49,11 @@ async def _on_paid(tg, transaction_id, pending):
     del state.pending_payments[transaction_id]
     state.save()
 
+    user = state.ensure_user(chat_id)
+    sub_url = f"{config.SUB_BASE_URL}/sub/{user['sub_token']}"
     await tg.send_message(
         chat_id,
-        f"✅ Оплата получена! Подписка активна.\n\n"
-        f"Ваша ссылка для подключения (импортируйте в приложение — Hiddify/v2rayNG/NekoBox):\n"
-        f"{link}",
+        menus.connection_message("✅ Оплата получена! Подписка активна.", link, sub_url),
     )
 
     referrer_id = state.users.get(chat_id, {}).get("referrer")

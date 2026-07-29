@@ -5,6 +5,7 @@ import aiohttp
 
 import handlers
 import payments
+import subscription_server
 from state import state
 from telegram_api import TelegramClient
 from xui_api import xui
@@ -36,12 +37,14 @@ async def main():
         handlers.BOT_USERNAME = me["username"]
         log.info("logged in as @%s", me["username"])
 
+        sub_runner = await subscription_server.start_server()
         try:
             await asyncio.gather(
                 poll_updates(session, tg),
                 payments.poll_loop(session, tg),
             )
         finally:
+            await sub_runner.cleanup()
             await xui.close()
 
 

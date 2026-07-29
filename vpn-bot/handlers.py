@@ -3,8 +3,9 @@ import logging
 import config
 import menus
 import platega_api
-from plans import PLANS
+from plans import PLANS, TRIAL_DAYS
 from state import state
+from subscriptions import activate_subscription
 
 log = logging.getLogger("handlers")
 
@@ -38,6 +39,21 @@ async def _handle_message(session, tg, message):
         state.ensure_user(chat_id, referrer=referrer)
         state.save()
         await tg.send_message(chat_id, menus.WELCOME_TEXT, reply_markup=menus.MAIN_KB)
+        return
+
+    if text == "🎁 Пробный доступ":
+        user = state.ensure_user(chat_id)
+        if user.get("trial_used"):
+            await tg.send_message(chat_id, "Пробный период уже был использован. Выберите платный тариф кнопкой «💳 Купить / продлить».")
+            return
+        user["trial_used"] = True
+        state.save()
+        link, expiry_ms = await activate_subscription(chat_id, TRIAL_DAYS)
+        sub_url = f"{config.SUB_BASE_URL}/sub/{user['sub_token']}"
+        await tg.send_message(
+            chat_id,
+            menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link, sub_url),
+        )
         return
 
     if text == "💳 Купить / продлить":

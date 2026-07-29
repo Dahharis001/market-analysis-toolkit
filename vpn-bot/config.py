@@ -34,6 +34,9 @@ XUI_VERIFY_SSL = os.environ.get("XUI_VERIFY_SSL", "true").lower() not in ("0", "
 REFERRAL_PERCENT = float(os.environ.get("REFERRAL_PERCENT", "20"))
 MIN_WITHDRAWAL_RUB = float(os.environ.get("MIN_WITHDRAWAL_RUB", "300"))
 
+SUB_SERVER_PORT = int(os.environ.get("SUB_SERVER_PORT", "8080"))
+SUB_BASE_URL = os.environ.get("SUB_BASE_URL", f"http://{os.environ.get('XUI_SERVER_HOST', '')}:{SUB_SERVER_PORT}")
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(BASE_DIR, os.environ.get("STATE_PATH", "state.json"))
 
