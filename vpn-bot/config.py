@@ -23,6 +23,8 @@ ADMIN_CHAT_IDS = [int(x) for x in os.environ.get("ADMIN_CHAT_IDS", "").split(","
 PLATEGA_MERCHANT_ID = os.environ["PLATEGA_MERCHANT_ID"]
 PLATEGA_SECRET = os.environ["PLATEGA_SECRET"]
 PLATEGA_BASE = "https://app.platega.io"
+CRYPTOBOT_TOKEN = os.environ["CRYPTOBOT_TOKEN"]
+CRYPTOBOT_BASE = "https://pay.crypt.bot/api"
 
 XUI_PANEL_URL = os.environ["XUI_PANEL_URL"].rstrip("/")
 XUI_USERNAME = os.environ["XUI_USERNAME"]
