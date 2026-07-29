@@ -1,0 +1,58 @@
+import asyncio
+import logging
+
+import aiohttp
+
+import config
+
+log = logging.getLogger("telegram")
+
+
+class TelegramError(Exception):
+    pass
+
+
+class TelegramClient:
+    def __init__(self, session: aiohttp.ClientSession):
+        self.session = session
+
+    async def _post_json(self, method, payload, timeout=30):
+        url = f"{config.TELEGRAM_API}/{method}"
+        async with self.session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)) as r:
+            data = await r.json()
+            if not data.get("ok"):
+                raise TelegramError(f"{method} failed: {data}")
+            return data["result"]
+
+    async def get_me(self):
+        return await self._post_json("getMe", {}, timeout=15)
+
+    async def get_updates(self, offset, timeout=30):
+        url = f"{config.TELEGRAM_API}/getUpdates"
+        params = {"offset": offset, "timeout": timeout}
+        try:
+            async with self.session.get(
+                url, params=params, timeout=aiohttp.ClientTimeout(total=timeout + 10)
+            ) as r:
+                data = await r.json()
+                if not data.get("ok"):
+                    log.warning("getUpdates failed: %s", data)
+                    return []
+                return data["result"]
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            log.warning("getUpdates network error: %s", e)
+            return []
+
+    async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None):
+        payload = {"chat_id": chat_id, "text": text}
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        if parse_mode is not None:
+            payload["parse_mode"] = parse_mode
+        return await self._post_json("sendMessage", payload)
+
+    async def answer_callback_query(self, callback_query_id, text=None):
+        payload = {"callback_query_id": callback_query_id}
+        if text:
+            payload["text"] = text
+        return await self._post_json("answerCallbackQuery", payload)
