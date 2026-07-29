@@ -3,6 +3,7 @@ import logging
 import config
 import menus
 import platega_api
+import cryptobot_api
 from plans import PLANS, TRIAL_DAYS
 from state import state
 from subscriptions import activate_subscription
@@ -87,10 +88,32 @@ async def _handle_callback(session, tg, callback_query):
         if not plan:
             await tg.answer_callback_query(callback_query["id"], "Тариф не найден")
             return
+        # Show payment method choice
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "💳 СБП (Platega)", "callback_data": f"pay_platega:{plan_id}"}],
+                [{"text": "₿ Крипта (CryptoBot)", "callback_data": f"pay_cryptobot:{plan_id}"}],
+            ]
+        }
+        await tg.answer_callback_query(callback_query["id"])
+        await tg.send_message(
+            chat_id,
+            f"Выберите способ оплаты для тарифа «{plan['label']}»:",
+            reply_markup=keyboard,
+        )
+        return
+
+
+    if data.startswith("pay_platega:"):
+        plan_id = data.split(":", 1)[1]
+        plan = PLANS.get(plan_id)
+        if not plan:
+            await tg.answer_callback_query(callback_query["id"], "Тариф не найден")
+            return
         result = await platega_api.create_payment(
             session, plan["price"], f"Оплата подписки: {plan['label']}", chat_id
         )
-        state.pending_payments[result["transactionId"]] = {"chat_id": chat_id, "plan_id": plan_id}
+        state.pending_payments[result["transactionId"]] = {"chat_id": chat_id, "plan_id": plan_id, "provider": "platega"}
         state.save()
         await tg.answer_callback_query(callback_query["id"])
         await tg.send_message(
@@ -99,6 +122,23 @@ async def _handle_callback(session, tg, callback_query):
         )
         return
 
+    if data.startswith("pay_cryptobot:"):
+        plan_id = data.split(":", 1)[1]
+        plan = PLANS.get(plan_id)
+        if not plan:
+            await tg.answer_callback_query(callback_query["id"], "Тариф не найден")
+            return
+        result = await cryptobot_api.create_invoice(
+            session, plan["price"], f"Подписка VPN: {plan['label']}", chat_id, plan_id
+        )
+        state.pending_payments[result["invoice_id"]] = {"chat_id": chat_id, "plan_id": plan_id, "provider": "cryptobot"}
+        state.save()
+        await tg.answer_callback_query(callback_query["id"])
+        await tg.send_message(
+            chat_id,
+            f"Оплатите тариф «{plan['label']}» по ссылке ниже (криптовалютой USDT, TON или BTC). После оплаты доступ выдастся автоматически:\n\n{result['pay_url']}",
+        )
+        return
     if data == "withdraw":
         user = state.ensure_user(chat_id)
         if user["ref_balance"] < config.MIN_WITHDRAWAL_RUB:
