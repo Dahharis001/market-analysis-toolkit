@@ -1,6 +1,7 @@
 import logging
 
 import config
+import legal
 import menus
 import platega_api
 import cryptobot_api
@@ -100,6 +101,16 @@ async def _handle_message(session, tg, message):
             menus.referral_text(BOT_USERNAME, chat_id, user, config.MIN_WITHDRAWAL_RUB, config.REFERRAL_PERCENT),
             reply_markup=menus.withdraw_inline_kb(),
         )
+        return
+
+    if text == "🔒 Конфиденциальность":
+        SUPPORT_MODE_USERS.discard(chat_id)
+        await tg.send_message(chat_id, legal.PRIVACY_POLICY)
+        return
+
+    if text == "📃 Соглашение":
+        SUPPORT_MODE_USERS.discard(chat_id)
+        await tg.send_message(chat_id, legal.TERMS_OF_SERVICE)
         return
 
     if chat_id in SUPPORT_MODE_USERS and text:
