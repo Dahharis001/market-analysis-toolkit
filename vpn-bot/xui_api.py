@@ -157,7 +157,7 @@ class XuiClient:
         p = self._reality_params(inbound)
         flow = client.get("flow") or DEFAULT_FLOW
         params = (
-            f"type={quote(p['network'])}&security=reality&pbk={quote(p['pbk'])}&fp={quote(p['fp'])}"
+            f"encryption=none&type={quote(p['network'])}&security=reality&pbk={quote(p['pbk'])}&fp={quote(p['fp'])}"
             f"&sni={quote(p['sni'])}&sid={quote(p['sid'])}&spx={quote(p['spx'])}&flow={quote(flow)}"
         )
         return f"vless://{client['uuid']}@{config.XUI_SERVER_HOST}:{p['port']}?{params}#{quote(remark)}"
