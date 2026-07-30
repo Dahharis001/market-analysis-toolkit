@@ -5,6 +5,7 @@ import config
 import menus
 import platega_api
 import cryptobot_api
+import qr
 from plans import PLANS
 from state import state
 from subscriptions import activate_subscription
@@ -72,6 +73,7 @@ async def _on_paid(tg, transaction_id, pending):
         menus.connection_message("✅ Оплата получена! Подписка активна.", link, sub_url),
         parse_mode="MarkdownV2",
     )
+    await tg.send_photo_bytes(chat_id, qr.make_qr_png(link), caption="QR-код для сканирования в приложении")
 
     referrer_id = state.users.get(chat_id, {}).get("referrer")
     if referrer_id:

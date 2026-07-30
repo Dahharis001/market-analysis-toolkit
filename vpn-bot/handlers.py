@@ -6,6 +6,7 @@ import menus
 import platega_api
 import cryptobot_api
 import openrouter_api
+import qr
 from plans import PLANS, TRIAL_DAYS
 from state import state
 from subscriptions import activate_subscription
@@ -80,6 +81,7 @@ async def _handle_message(session, tg, message):
             menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link, sub_url),
             parse_mode="MarkdownV2",
         )
+        await tg.send_photo_bytes(chat_id, qr.make_qr_png(link), caption="QR-код для сканирования в приложении")
         return
 
     if text == "💳 Купить / продлить":
