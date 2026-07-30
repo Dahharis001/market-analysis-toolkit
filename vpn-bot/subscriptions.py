@@ -15,13 +15,13 @@ async def activate_subscription(chat_id, days):
     base = user["expiry_ms"] if user["expiry_ms"] > now_ms else now_ms
     new_expiry = base + days * DAY_MS
 
-    if user["xui_uuid"]:
-        link = await xui.update_client_expiry(user["xui_uuid"], user["xui_email"], new_expiry)
+    if user["xui_email"]:
+        link, client_uuid = await xui.update_client_expiry(user["xui_email"], new_expiry)
     else:
         email = f"tg{chat_id}"
-        client_uuid, link = await xui.add_client(email, new_expiry)
+        link, client_uuid = await xui.add_client(email, new_expiry)
         user["xui_email"] = email
-        user["xui_uuid"] = client_uuid
+    user["xui_uuid"] = client_uuid
 
     user["expiry_ms"] = new_expiry
     state.save()
