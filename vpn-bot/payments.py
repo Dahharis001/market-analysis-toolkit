@@ -70,6 +70,7 @@ async def _on_paid(tg, transaction_id, pending):
     await tg.send_message(
         chat_id,
         menus.connection_message("✅ Оплата получена! Подписка активна.", link, sub_url),
+        parse_mode="MarkdownV2",
     )
 
     referrer_id = state.users.get(chat_id, {}).get("referrer")

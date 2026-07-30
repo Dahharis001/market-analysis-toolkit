@@ -77,6 +77,7 @@ async def _handle_message(session, tg, message):
         await tg.send_message(
             chat_id,
             menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link, sub_url),
+            parse_mode="MarkdownV2",
         )
         return
 

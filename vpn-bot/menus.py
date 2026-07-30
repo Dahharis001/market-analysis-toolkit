@@ -1,4 +1,17 @@
+import re
+
 from plans import PLANS, TRIAL_DAYS
+
+_MD_SPECIAL_RE = re.compile(r"([_*\[\]()~`>#+\-=|{}.!])")
+
+
+def _escape_md(text):
+    return _MD_SPECIAL_RE.sub(r"\\\1", text)
+
+
+def _code(text):
+    escaped = text.replace("\\", "\\\\").replace("`", "\\`")
+    return "`" + escaped + "`"
 
 MAIN_KB = {
     "keyboard": [
@@ -47,10 +60,9 @@ WELCOME_TEXT = (
 
 def connection_message(intro, link, sub_url):
     return (
-        f"{intro}\n\n"
-        f"1) Простая ссылка (любое приложение — v2rayNG, NekoBox, Hiddify):\n{link}\n\n"
-        f"2) Ссылка-подписка с автообходом российских сайтов (только для Hiddify/sing-box — "
-        f"добавьте как «Sing-box подписку»):\n{sub_url}"
+        f"{_escape_md(intro)}\n\n"
+        f"{_escape_md('1) Простая ссылка (любое приложение — v2rayNG, NekoBox, Hiddify):')}\n{_code(link)}\n\n"
+        f"{_escape_md('2) Ссылка-подписка с автообходом российских сайтов (только для Hiddify/sing-box — добавьте как «Sing-box подписку»):')}\n{_code(sub_url)}"
     )
 
 
