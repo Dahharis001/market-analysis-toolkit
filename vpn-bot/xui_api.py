@@ -23,17 +23,25 @@ def _maybe_json(value):
 
 
 class XuiClient:
-    """Thin wrapper around the 3x-ui panel REST API (session-cookie + CSRF-token auth)."""
+    """Thin wrapper around one 3x-ui panel's REST API (session-cookie + CSRF-token auth)."""
 
-    def __init__(self):
+    def __init__(self, region):
+        panel = config.PANELS[region]
+        self.region = region
+        self.label = panel["label"]
+        self.base_url = panel["url"]
+        self.username = panel["username"]
+        self.password = panel["password"]
+        self.inbound_id = panel["inbound_id"]
+        self.server_host = panel["host"]
         self._session = None
         self._csrf_token = None
 
     async def _ensure_session(self):
         if self._session is None or self._session.closed:
             connector = aiohttp.TCPConnector(ssl=config.XUI_VERIFY_SSL)
-            # XUI_PANEL_URL is a bare IP: aiohttp's default cookie jar silently drops
-            # cookies for IP-address hosts unless the jar is marked "unsafe".
+            # Panels are addressed by bare IP: aiohttp's default cookie jar silently
+            # drops cookies for IP-address hosts unless the jar is marked "unsafe".
             cookie_jar = aiohttp.CookieJar(unsafe=True)
             self._session = aiohttp.ClientSession(connector=connector, cookie_jar=cookie_jar)
             await self._login()
@@ -43,7 +51,7 @@ class XuiClient:
         """The panel embeds a token in a <meta name="csrf-token"> tag that must be echoed
         back as X-CSRF-Token on every state-changing request (login, add/update/del client)."""
         async with self._session.get(
-            f"{config.XUI_PANEL_URL}/", timeout=aiohttp.ClientTimeout(total=20)
+            f"{self.base_url}/", timeout=aiohttp.ClientTimeout(total=20)
         ) as r:
             html = await r.text()
         match = re.search(r'<meta name="csrf-token" content="([^"]+)"', html)
@@ -53,17 +61,17 @@ class XuiClient:
 
     async def _login(self):
         self._csrf_token = await self._get_csrf_token()
-        url = f"{config.XUI_PANEL_URL}/login"
+        url = f"{self.base_url}/login"
         async with self._session.post(
             url,
-            json={"username": config.XUI_USERNAME, "password": config.XUI_PASSWORD},
+            json={"username": self.username, "password": self.password},
             headers={"X-CSRF-Token": self._csrf_token},
             timeout=aiohttp.ClientTimeout(total=20),
         ) as r:
             data = await r.json()
             if not data.get("success"):
                 raise XuiError(f"3x-ui login failed: {data}")
-        log.info("logged into 3x-ui panel")
+        log.info("logged into 3x-ui panel [%s]", self.region)
 
     async def close(self):
         if self._session and not self._session.closed:
@@ -71,7 +79,7 @@ class XuiClient:
 
     async def _post(self, path, json_body=None):
         session = await self._ensure_session()
-        url = f"{config.XUI_PANEL_URL}{path}"
+        url = f"{self.base_url}{path}"
         headers = {"X-CSRF-Token": self._csrf_token}
         async with session.post(url, json=json_body, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as r:
             data = await r.json()
@@ -81,7 +89,7 @@ class XuiClient:
 
     async def _get(self, path):
         session = await self._ensure_session()
-        url = f"{config.XUI_PANEL_URL}{path}"
+        url = f"{self.base_url}{path}"
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as r:
             data = await r.json()
             if not data.get("success"):
@@ -90,9 +98,9 @@ class XuiClient:
 
     async def _get_inbound(self):
         for inbound in await self._get("/panel/api/inbounds/list"):
-            if inbound["id"] == config.XUI_INBOUND_ID:
+            if inbound["id"] == self.inbound_id:
                 return inbound
-        raise XuiError(f"inbound id {config.XUI_INBOUND_ID} not found in inbounds list")
+        raise XuiError(f"inbound id {self.inbound_id} not found in inbounds list")
 
     async def _get_client(self, email):
         return (await self._get(f"/panel/api/clients/get/{email}"))["client"]
@@ -109,7 +117,7 @@ class XuiClient:
                 "enable": True,
                 "flow": DEFAULT_FLOW,
             },
-            "inboundIds": [config.XUI_INBOUND_ID],
+            "inboundIds": [self.inbound_id],
         }
         await self._post("/panel/api/clients/add", body)
         client = await self._get_client(email)
@@ -160,15 +168,29 @@ class XuiClient:
             f"encryption=none&type={quote(p['network'])}&security=reality&pbk={quote(p['pbk'])}&fp={quote(p['fp'])}"
             f"&sni={quote(p['sni'])}&sid={quote(p['sid'])}&spx={quote(p['spx'])}&flow={quote(flow)}"
         )
-        return f"vless://{client['uuid']}@{config.XUI_SERVER_HOST}:{p['port']}?{params}#{quote(remark)}"
+        return f"vless://{client['uuid']}@{self.server_host}:{p['port']}?{params}#{quote(remark)}"
 
     async def get_reality_info(self):
         """Raw reality params for the inbound, used to build sing-box subscription profiles."""
         inbound = await self._get_inbound()
         info = self._reality_params(inbound)
         info["flow"] = DEFAULT_FLOW
-        info["host"] = config.XUI_SERVER_HOST
+        info["host"] = self.server_host
         return info
 
 
-xui = XuiClient()
+CLIENTS = {region: XuiClient(region) for region in config.PANELS}
+
+
+def for_region(region):
+    """Panel client for the region the user picked, falling back to the default one."""
+    return CLIENTS.get(region) or CLIENTS[config.DEFAULT_REGION]
+
+
+async def close_all():
+    for client in CLIENTS.values():
+        await client.close()
+
+
+# default panel, kept so single-region call sites keep working
+xui = CLIENTS[config.DEFAULT_REGION]

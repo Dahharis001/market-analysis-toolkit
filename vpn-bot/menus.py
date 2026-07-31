@@ -1,5 +1,6 @@
 import re
 
+import config
 from plans import PLANS, TRIAL_DAYS
 
 _MD_SPECIAL_RE = re.compile(r"([_*\[\]()~`>#+\-=|{}.!])")
@@ -70,6 +71,25 @@ def is_answer_safe(text):
     return not BANNED_PATTERNS.search(text or "")
 
 
+def region_inline_kb(action):
+    """action is carried through the callback so we know what to do after the choice."""
+    rows = [[{"text": p["label"], "callback_data": f"region:{action}:{code}"}]
+            for code, p in config.PANELS.items()]
+    return {"inline_keyboard": rows}
+
+
+REGION_QUESTION = (
+    "Откуда вы будете подключаться?\n\n"
+    "🇷🇺 Я в России — вход через российский сервер, работает на мобильных сетях\n"
+    "🌍 Я за границей — прямое подключение к зарубежному серверу"
+)
+
+
+def region_name(code):
+    panel = config.PANELS.get(code)
+    return panel["label"] if panel else code
+
+
 def plans_inline_kb():
     rows = [[{"text": p["label"], "callback_data": f"buy:{key}"}] for key, p in PLANS.items()]
     return {"inline_keyboard": rows}
@@ -105,7 +125,16 @@ def profile_text(user):
         status = f"✅ Активна, осталось {days_left} дн."
     else:
         status = "❌ Не активна"
-    return f"👤 Ваш профиль\n\nПодписка: {status}"
+    lines = [f"👤 Ваш профиль", "", f"Подписка: {status}"]
+    if len(config.PANELS) > 1:
+        lines.append(f"Сервер: {region_name(user.get('region'))}")
+    return "\n".join(lines)
+
+
+def profile_inline_kb(user):
+    if len(config.PANELS) < 2 or not user.get("xui_email"):
+        return None
+    return {"inline_keyboard": [[{"text": "🌍 Сменить сервер", "callback_data": "switch_region"}]]}
 
 
 def referral_text(bot_username, chat_id, user, min_withdrawal, percent):

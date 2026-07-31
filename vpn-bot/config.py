@@ -23,6 +23,9 @@ ADMIN_CHAT_IDS = [int(x) for x in os.environ.get("ADMIN_CHAT_IDS", "").split(","
 PLATEGA_MERCHANT_ID = os.environ["PLATEGA_MERCHANT_ID"]
 PLATEGA_SECRET = os.environ["PLATEGA_SECRET"]
 PLATEGA_BASE = "https://app.platega.io"
+# Platega adds its fee on top of the requested sum, so we request less and the
+# customer ends up paying exactly the price shown in the bot.
+PLATEGA_FEE_PERCENT = float(os.environ.get("PLATEGA_FEE_PERCENT", "8"))
 CRYPTOBOT_TOKEN = os.environ["CRYPTOBOT_TOKEN"]
 CRYPTOBOT_BASE = "https://pay.crypt.bot/api"
 
@@ -30,12 +33,36 @@ OPENROUTER_API_KEY = os.environ["OPENROUTER_API_KEY"]
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 SUPPORT_MODEL = os.environ.get("SUPPORT_MODEL", "deepseek/deepseek-chat")
 
-XUI_PANEL_URL = os.environ["XUI_PANEL_URL"].rstrip("/")
-XUI_USERNAME = os.environ["XUI_USERNAME"]
-XUI_PASSWORD = os.environ["XUI_PASSWORD"]
-XUI_INBOUND_ID = int(os.environ["XUI_INBOUND_ID"])
-XUI_SERVER_HOST = os.environ["XUI_SERVER_HOST"]
 XUI_VERIFY_SSL = os.environ.get("XUI_VERIFY_SSL", "true").lower() not in ("0", "false", "no")
+
+# Two entry points. "ru" is the domestic entry that relays abroad — reachable from
+# Russian networks. "eu" is a direct foreign entry for users outside Russia.
+PANELS = {
+    "ru": {
+        "label": "🇷🇺 Я в России",
+        "url": os.environ["XUI_PANEL_URL"].rstrip("/"),
+        "username": os.environ["XUI_USERNAME"],
+        "password": os.environ["XUI_PASSWORD"],
+        "inbound_id": int(os.environ["XUI_INBOUND_ID"]),
+        "host": os.environ["XUI_SERVER_HOST"],
+    }
+}
+
+if os.environ.get("XUI_EU_PANEL_URL"):
+    PANELS["eu"] = {
+        "label": "🌍 Я за границей",
+        "url": os.environ["XUI_EU_PANEL_URL"].rstrip("/"),
+        "username": os.environ["XUI_EU_USERNAME"],
+        "password": os.environ["XUI_EU_PASSWORD"],
+        "inbound_id": int(os.environ["XUI_EU_INBOUND_ID"]),
+        "host": os.environ["XUI_EU_SERVER_HOST"],
+    }
+
+DEFAULT_REGION = "ru"
+
+# kept for backwards compatibility with older single-panel code paths
+XUI_PANEL_URL = PANELS["ru"]["url"]
+XUI_SERVER_HOST = PANELS["ru"]["host"]
 
 REFERRAL_PERCENT = float(os.environ.get("REFERRAL_PERCENT", "20"))
 MIN_WITHDRAWAL_RUB = float(os.environ.get("MIN_WITHDRAWAL_RUB", "300"))

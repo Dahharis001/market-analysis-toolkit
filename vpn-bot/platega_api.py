@@ -43,10 +43,16 @@ async def _request(session, method, url, *, json_body=None, timeout=30):
     raise RuntimeError(f"Platega запрос не удался: {last_exc}")
 
 
+def _requested_amount(price_rub):
+    """Platega charges the payer our amount plus its fee. Ask for the pre-fee sum so
+    the payer is billed exactly the price advertised in the bot."""
+    return round(price_rub / (1 + config.PLATEGA_FEE_PERCENT / 100), 2)
+
+
 async def create_payment(session, amount_rub, description, chat_id, payment_method=METHOD_SBP):
     body = {
         "paymentMethod": payment_method,
-        "paymentDetails": {"amount": int(amount_rub), "currency": "RUB"},
+        "paymentDetails": {"amount": _requested_amount(amount_rub), "currency": "RUB"},
         "description": description,
         "return": "https://t.me",
         "failedUrl": "https://t.me",

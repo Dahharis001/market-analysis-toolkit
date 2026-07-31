@@ -8,7 +8,7 @@ import payments
 import subscription_server
 from state import state
 from telegram_api import TelegramClient
-from xui_api import xui
+import xui_api
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,7 +45,7 @@ async def main():
             )
         finally:
             await sub_runner.cleanup()
-            await xui.close()
+            await xui_api.close_all()
 
 
 if __name__ == "__main__":

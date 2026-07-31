@@ -24,6 +24,7 @@ class State:
             "ref_count": 0,
             "trial_used": False,
             "sub_token": secrets.token_hex(16),
+            "region": config.DEFAULT_REGION,
         }
 
     def ensure_user(self, chat_id, referrer=None):
@@ -34,6 +35,8 @@ class State:
         user = self.users[chat_id]
         if not user.get("sub_token"):
             user["sub_token"] = secrets.token_hex(16)
+        if not user.get("region"):
+            user["region"] = config.DEFAULT_REGION
         return user
 
     def find_by_sub_token(self, token):

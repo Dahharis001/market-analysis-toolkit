@@ -7,6 +7,7 @@ import platega_api
 import cryptobot_api
 import openrouter_api
 import qr
+import subscriptions
 from plans import PLANS, TRIAL_DAYS
 from state import state
 from subscriptions import activate_subscription
@@ -25,6 +26,24 @@ async def handle_update(session, tg, update):
             await _handle_callback(session, tg, update["callback_query"])
     except Exception:
         log.exception("failed to handle update %s", update.get("update_id"))
+
+
+async def _issue_trial(tg, chat_id, region=None):
+    user = state.ensure_user(chat_id)
+    try:
+        link, expiry_ms = await activate_subscription(chat_id, TRIAL_DAYS, region=region)
+    except Exception:
+        log.exception("trial activation failed for %s", chat_id)
+        await tg.send_message(chat_id, "⚠️ Не удалось выдать доступ, техническая ошибка. Попробуйте ещё раз через пару минут.")
+        return
+    user["trial_used"] = True
+    state.save()
+    await tg.send_photo_bytes(
+        chat_id,
+        qr.make_qr_png(link),
+        caption=menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link),
+        parse_mode="MarkdownV2",
+    )
 
 
 async def _handle_message(session, tg, message):
@@ -67,20 +86,10 @@ async def _handle_message(session, tg, message):
         if user.get("trial_used"):
             await tg.send_message(chat_id, "Пробный период уже был использован. Выберите платный тариф кнопкой «💳 Купить / продлить».")
             return
-        try:
-            link, expiry_ms = await activate_subscription(chat_id, TRIAL_DAYS)
-        except Exception:
-            log.exception("trial activation failed for %s", chat_id)
-            await tg.send_message(chat_id, "⚠️ Не удалось выдать доступ, техническая ошибка. Попробуйте ещё раз через пару минут.")
+        if len(config.PANELS) > 1:
+            await tg.send_message(chat_id, menus.REGION_QUESTION, reply_markup=menus.region_inline_kb("trial"))
             return
-        user["trial_used"] = True
-        state.save()
-        await tg.send_photo_bytes(
-            chat_id,
-            qr.make_qr_png(link),
-            caption=menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link),
-            parse_mode="MarkdownV2",
-        )
+        await _issue_trial(tg, chat_id)
         return
 
     if text == "💳 Купить / продлить":
@@ -91,7 +100,7 @@ async def _handle_message(session, tg, message):
     if text == "👤 Мой профиль":
         SUPPORT_MODE_USERS.discard(chat_id)
         user = state.ensure_user(chat_id)
-        await tg.send_message(chat_id, menus.profile_text(user))
+        await tg.send_message(chat_id, menus.profile_text(user), reply_markup=menus.profile_inline_kb(user))
         return
 
     if text == "🤝 Партнёрка":
@@ -133,6 +142,41 @@ async def _handle_message(session, tg, message):
 async def _handle_callback(session, tg, callback_query):
     data = callback_query.get("data", "")
     chat_id = callback_query["message"]["chat"]["id"]
+
+    if data.startswith("region:"):
+        _, action, region = data.split(":", 2)
+        if region not in config.PANELS:
+            await tg.answer_callback_query(callback_query["id"], "Сервер недоступен")
+            return
+        await tg.answer_callback_query(callback_query["id"])
+        user = state.ensure_user(chat_id)
+        if action == "trial":
+            user["region"] = region
+            state.save()
+            await _issue_trial(tg, chat_id, region=region)
+        elif action == "switch":
+            try:
+                link = await subscriptions.move_to_region(chat_id, region)
+            except Exception:
+                log.exception("region switch failed for %s", chat_id)
+                await tg.send_message(chat_id, "⚠️ Не удалось сменить сервер, попробуйте позже.")
+                return
+            if not link:
+                await tg.send_message(chat_id, "У вас нет активной подписки — сначала оформите доступ.")
+                return
+            await tg.send_photo_bytes(
+                chat_id,
+                qr.make_qr_png(link),
+                caption=menus.connection_message(
+                    f"🌍 Сервер изменён на {menus.region_name(region)}. Прежняя ссылка больше не действует.", link),
+                parse_mode="MarkdownV2",
+            )
+        return
+
+    if data == "switch_region":
+        await tg.answer_callback_query(callback_query["id"])
+        await tg.send_message(chat_id, menus.REGION_QUESTION, reply_markup=menus.region_inline_kb("switch"))
+        return
 
     if data.startswith("buy:"):
         plan_id = data.split(":", 1)[1]
