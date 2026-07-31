@@ -66,14 +66,12 @@ async def _on_paid(tg, transaction_id, pending):
     del state.pending_payments[transaction_id]
     state.save()
 
-    user = state.ensure_user(chat_id)
-    sub_url = f"{config.SUB_BASE_URL}/sub/{user['sub_token']}"
-    await tg.send_message(
+    await tg.send_photo_bytes(
         chat_id,
-        menus.connection_message("✅ Оплата получена! Подписка активна.", link, sub_url),
+        qr.make_qr_png(link),
+        caption=menus.connection_message("✅ Оплата получена! Подписка активна.", link),
         parse_mode="MarkdownV2",
     )
-    await tg.send_photo_bytes(chat_id, qr.make_qr_png(link), caption="QR-код для сканирования в приложении")
 
     referrer_id = state.users.get(chat_id, {}).get("referrer")
     if referrer_id:

@@ -62,9 +62,12 @@ WELCOME_TEXT = (
 
 
 def connection_message(intro, link, sub_url=None):
+    """Caption for the QR photo: the link sits in a code span, so tapping it copies the whole link."""
     return (
         f"{_escape_md(intro)}\n\n"
-        f"{_escape_md('Ссылка для подключения (любое приложение — v2rayNG, NekoBox, Hiddify):')}\n{_code(link)}"
+        f"{_escape_md('Отсканируйте QR в приложении (Happ, v2RayTun, v2rayNG, NekoBox, Hiddify) '
+                      'или нажмите на ссылку ниже, чтобы скопировать её:')}\n\n"
+        f"{_code(link)}"
     )
 
 

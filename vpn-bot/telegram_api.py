@@ -57,12 +57,14 @@ class TelegramClient:
             payload["text"] = text
         return await self._post_json("answerCallbackQuery", payload)
 
-    async def send_photo_bytes(self, chat_id, image_bytes, caption=None, filename="qr.png"):
+    async def send_photo_bytes(self, chat_id, image_bytes, caption=None, filename="qr.png", parse_mode=None):
         url = f"{config.TELEGRAM_API}/sendPhoto"
         data = aiohttp.FormData()
         data.add_field("chat_id", str(chat_id))
         if caption:
             data.add_field("caption", caption)
+        if parse_mode:
+            data.add_field("parse_mode", parse_mode)
         data.add_field("photo", image_bytes, filename=filename, content_type="image/png")
         async with self.session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=60)) as r:
             result = await r.json()

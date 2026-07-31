@@ -75,13 +75,12 @@ async def _handle_message(session, tg, message):
             return
         user["trial_used"] = True
         state.save()
-        sub_url = f"{config.SUB_BASE_URL}/sub/{user['sub_token']}"
-        await tg.send_message(
+        await tg.send_photo_bytes(
             chat_id,
-            menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link, sub_url),
+            qr.make_qr_png(link),
+            caption=menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link),
             parse_mode="MarkdownV2",
         )
-        await tg.send_photo_bytes(chat_id, qr.make_qr_png(link), caption="QR-код для сканирования в приложении")
         return
 
     if text == "💳 Купить / продлить":
