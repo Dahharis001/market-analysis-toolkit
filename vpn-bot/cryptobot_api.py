@@ -17,7 +17,8 @@ async def _request(session, method, url, *, params=None, json_body=None, timeout
     for attempt in range(1, MAX_TRIES + 1):
         try:
             async with session.request(
-                method, url, params=params, json=json_body, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=timeout)
+                method, url, params=params, json=json_body, headers=HEADERS,
+                proxy=config.OUTBOUND_PROXY, timeout=aiohttp.ClientTimeout(total=timeout)
             ) as r:
                 data = await r.json()
                 if not data.get("ok"):

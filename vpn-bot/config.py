@@ -46,4 +46,8 @@ SUB_BASE_URL = os.environ.get("SUB_BASE_URL", f"http://{os.environ.get('XUI_SERV
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_PATH = os.path.join(BASE_DIR, os.environ.get("STATE_PATH", "state.json"))
 
+# Telegram/OpenRouter/CryptoBot are unreliable from a Russian datacenter, so external
+# calls go through a local proxy that exits abroad. Empty = talk to them directly.
+OUTBOUND_PROXY = os.environ.get("OUTBOUND_PROXY") or None
+
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}"

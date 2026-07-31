@@ -18,7 +18,9 @@ class TelegramClient:
 
     async def _post_json(self, method, payload, timeout=30):
         url = f"{config.TELEGRAM_API}/{method}"
-        async with self.session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=timeout)) as r:
+        async with self.session.post(
+            url, json=payload, proxy=config.OUTBOUND_PROXY, timeout=aiohttp.ClientTimeout(total=timeout)
+        ) as r:
             data = await r.json()
             if not data.get("ok"):
                 raise TelegramError(f"{method} failed: {data}")
@@ -32,7 +34,8 @@ class TelegramClient:
         params = {"offset": offset, "timeout": timeout}
         try:
             async with self.session.get(
-                url, params=params, timeout=aiohttp.ClientTimeout(total=timeout + 10)
+                url, params=params, proxy=config.OUTBOUND_PROXY,
+                timeout=aiohttp.ClientTimeout(total=timeout + 10)
             ) as r:
                 data = await r.json()
                 if not data.get("ok"):
@@ -66,7 +69,9 @@ class TelegramClient:
         if parse_mode:
             data.add_field("parse_mode", parse_mode)
         data.add_field("photo", image_bytes, filename=filename, content_type="image/png")
-        async with self.session.post(url, data=data, timeout=aiohttp.ClientTimeout(total=60)) as r:
+        async with self.session.post(
+            url, data=data, proxy=config.OUTBOUND_PROXY, timeout=aiohttp.ClientTimeout(total=60)
+        ) as r:
             result = await r.json()
         if not result.get("ok"):
             raise TelegramError(f"sendPhoto (upload) failed: {result}")

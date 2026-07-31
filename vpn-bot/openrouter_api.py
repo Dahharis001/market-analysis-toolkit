@@ -23,7 +23,8 @@ async def _request(session, json_body, timeout=30):
     for attempt in range(1, MAX_TRIES + 1):
         try:
             async with session.post(
-                url, json=json_body, headers=HEADERS, timeout=aiohttp.ClientTimeout(total=timeout)
+                url, json=json_body, headers=HEADERS,
+                proxy=config.OUTBOUND_PROXY, timeout=aiohttp.ClientTimeout(total=timeout)
             ) as r:
                 data = await r.json()
                 if r.status >= 400:
