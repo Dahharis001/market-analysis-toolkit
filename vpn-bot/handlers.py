@@ -120,6 +120,10 @@ async def _handle_message(session, tg, message):
         except Exception:
             log.exception("support AI call failed for %s", chat_id)
             answer = "⚠️ Не удалось получить ответ от ассистента, попробуйте ещё раз через пару минут."
+        else:
+            if not menus.is_answer_safe(answer):
+                log.warning("support answer blocked by wording filter for %s", chat_id)
+                answer = menus.SUPPORT_FALLBACK
         await tg.send_message(chat_id, answer or "Не смог сформулировать ответ, попробуйте переформулировать вопрос.")
         return
 

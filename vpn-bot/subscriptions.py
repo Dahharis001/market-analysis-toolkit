@@ -9,7 +9,7 @@ log = logging.getLogger("subscriptions")
 
 
 async def activate_subscription(chat_id, days):
-    """Extends (or creates) the user's VLESS client on the VPN server. Returns the share link."""
+    """Extends (or creates) the user's VLESS client on the access server. Returns the share link."""
     user = state.ensure_user(chat_id)
     now_ms = int(time.time() * 1000)
     base = user["expiry_ms"] if user["expiry_ms"] > now_ms else now_ms
