@@ -44,6 +44,15 @@ async def _issue_trial(tg, chat_id, region=None):
         caption=menus.connection_message(f"🎁 Пробный доступ на {TRIAL_DAYS} дня активирован!", link),
         parse_mode="MarkdownV2",
     )
+    await _offer_sharing(tg, chat_id)
+
+
+async def _offer_sharing(tg, chat_id):
+    """Ask for a share only once a working connection has just been handed over."""
+    if not BOT_USERNAME:
+        return
+    text, keyboard = menus.share_prompt(BOT_USERNAME, chat_id)
+    await tg.send_message(chat_id, text, reply_markup=keyboard)
 
 
 async def _handle_message(session, tg, message):
@@ -108,8 +117,8 @@ async def _handle_message(session, tg, message):
         user = state.ensure_user(chat_id)
         await tg.send_message(
             chat_id,
-            menus.referral_text(BOT_USERNAME, chat_id, user, config.MIN_WITHDRAWAL_RUB, config.REFERRAL_PERCENT),
-            reply_markup=menus.withdraw_inline_kb(),
+            menus.referral_text(BOT_USERNAME, chat_id, user),
+            reply_markup=menus.referral_inline_kb(BOT_USERNAME, chat_id, user),
         )
         return
 
@@ -171,6 +180,25 @@ async def _handle_callback(session, tg, callback_query):
                     f"🌍 Сервер изменён на {menus.region_name(region)}. Прежняя ссылка больше не действует.", link),
                 parse_mode="MarkdownV2",
             )
+        return
+
+    if data == "my_link":
+        await tg.answer_callback_query(callback_query["id"])
+        try:
+            link = await subscriptions.current_link(chat_id)
+        except Exception:
+            log.exception("could not rebuild connection link for %s", chat_id)
+            await tg.send_message(chat_id, "⚠️ Не удалось получить ссылку, попробуйте через пару минут.")
+            return
+        if not link:
+            await tg.send_message(chat_id, "Активной подписки нет — оформите доступ кнопкой «💳 Купить / продлить».")
+            return
+        await tg.send_photo_bytes(
+            chat_id,
+            qr.make_qr_png(link),
+            caption=menus.connection_message("🔑 Ваша ссылка для подключения:", link),
+            parse_mode="MarkdownV2",
+        )
         return
 
     if data == "switch_region":

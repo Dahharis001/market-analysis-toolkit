@@ -1,4 +1,5 @@
 import re
+from urllib.parse import quote
 
 import config
 from plans import PLANS, TRIAL_DAYS
@@ -43,8 +44,9 @@ SUPPORT_SYSTEM_PROMPT = """Ты — ассистент поддержки Telegr
 - Оплата: СБП через Platega или криптовалютой (USDT/TON/BTC) через CryptoBot — выбор способа появляется после выбора тарифа.
 - После оплаты или активации пробного периода бот присылает ссылку (vless://...) для подключения в приложении (v2rayNG, NekoBox, Hiddify).
 - Подключение: скачать бесплатное приложение Hiddify (App Store/Google Play) → открыть → нажать «+» → вставить скопированную ссылку из буфера обмена → нажать кнопку подключения.
-- Реферальная программа: своя ссылка в разделе «🤝 Партнёрка», 20% от оплаты приглашённого начисляется на баланс, вывод от 300₽ — вручную, через администратора (кнопка «Запросить вывод»).
-- Частые проблемы: не подключается — посоветуй проверить, что ссылка вставлена полностью, переустановить/обновить Hiddify, попробовать другую сеть (Wi-Fi/мобильный интернет).
+- Реферальная программа (раздел «🤝 Партнёрка»): приглашённому +7 дней сверх первого оплаченного тарифа, пригласившему +14 дней за каждого, кто оплатит. Начисляется автоматически сразу после оплаты приглашённого, деньги не выводятся — награда только днями. У кого остался баланс со старой схемы, тот может вывести его от 300₽ через администратора.
+- Если пользователь потерял ссылку для подключения — она всегда доступна в разделе «👤 Мой профиль» по кнопке «🔑 Моя ссылка».
+- Частые проблемы: не подключается — посоветуй проверить, что ссылка вставлена полностью, переустановить/обновить Hiddify, попробовать другую сеть (Wi-Fi/мобильный интернет). На Android и Windows подойдут v2rayNG, NekoBox, Hiddify; на iPhone — Happ, Streisand, v2RayTun.
 - Политика конфиденциальности и пользовательское соглашение доступны кнопками в главном меню.
 - Если не можешь помочь — предложи написать напрямую: @arsbay.
 
@@ -95,8 +97,31 @@ def plans_inline_kb():
     return {"inline_keyboard": rows}
 
 
-def withdraw_inline_kb():
-    return {"inline_keyboard": [[{"text": "💸 Запросить вывод", "callback_data": "withdraw"}]]}
+def _ref_link(bot_username, chat_id):
+    return f"https://t.me/{bot_username}?start=ref_{chat_id}"
+
+
+SHARE_PITCH = (
+    "Пользуюсь этим ботом для защищённого соединения — 3 дня бесплатно, "
+    "дальше 150 ₽ в месяц. Заходи по ссылке, тебе дадут неделю сверху:"
+)
+
+
+def share_prompt(bot_username, chat_id):
+    """Text + keyboard nudging the user to pass their link on. Sent right after a working
+    connection is delivered, which is the only moment they are demonstrably happy."""
+    link = _ref_link(bot_username, chat_id)
+    text = (
+        "Всё подключилось? Позовите друзей:\n\n"
+        f"• другу — {config.REFERRAL_DAYS_INVITEE} дней сверх первого оплаченного тарифа\n"
+        f"• вам — {config.REFERRAL_DAYS_INVITER} дней за каждого, кто оплатит\n\n"
+        f"{link}"
+    )
+    share_url = (
+        "https://t.me/share/url?url=" + quote(link, safe="")
+        + "&text=" + quote(SHARE_PITCH, safe="")
+    )
+    return text, {"inline_keyboard": [[{"text": "📤 Поделиться", "url": share_url}]]}
 
 
 WELCOME_TEXT = (
@@ -132,18 +157,43 @@ def profile_text(user):
 
 
 def profile_inline_kb(user):
-    if len(config.PANELS) < 2 or not user.get("xui_email"):
+    if not user.get("xui_email"):
         return None
-    return {"inline_keyboard": [[{"text": "🌍 Сменить сервер", "callback_data": "switch_region"}]]}
+    rows = [[{"text": "🔑 Моя ссылка", "callback_data": "my_link"}]]
+    if len(config.PANELS) > 1:
+        rows.append([{"text": "🌍 Сменить сервер", "callback_data": "switch_region"}])
+    return {"inline_keyboard": rows}
 
 
-def referral_text(bot_username, chat_id, user, min_withdrawal, percent):
-    link = f"https://t.me/{bot_username}?start=ref_{chat_id}"
-    return (
-        "🤝 Партнёрская программа\n\n"
-        f"Ваша ссылка для приглашений:\n{link}\n\n"
-        f"Вы получаете {percent:.0f}% от каждой оплаты приглашённого пользователя.\n\n"
-        f"Приглашено оплативших: {user['ref_count']}\n"
-        f"Баланс: {user['ref_balance']:.2f} ₽\n"
-        f"Минимум для вывода: {min_withdrawal:.0f} ₽"
-    )
+def referral_text(bot_username, chat_id, user):
+    lines = [
+        "🤝 Партнёрская программа",
+        "",
+        f"• Другу — {config.REFERRAL_DAYS_INVITEE} дней сверх первого оплаченного тарифа",
+        f"• Вам — {config.REFERRAL_DAYS_INVITER} дней за каждого, кто оплатит",
+        "",
+        "Начисляется автоматически, сразу после оплаты приглашённого.",
+        "",
+        "Ваша ссылка:",
+        _ref_link(bot_username, chat_id),
+        "",
+        f"Оплатили по вашей ссылке: {user.get('ref_count', 0)}",
+        f"Всего начислено дней: {user.get('ref_days', 0)}",
+    ]
+    if user.get("days_banked"):
+        lines.append(f"Ждут активации: {user['days_banked']} дн. — добавятся, когда оформите доступ")
+    if user.get("ref_balance", 0) > 0:
+        lines += [
+            "",
+            f"Остаток старого денежного баланса: {user['ref_balance']:.2f} ₽ "
+            f"(вывод от {config.MIN_WITHDRAWAL_RUB:.0f} ₽; новые начисления идут днями)",
+        ]
+    return "\n".join(lines)
+
+
+def referral_inline_kb(bot_username, chat_id, user):
+    _, keyboard = share_prompt(bot_username, chat_id)
+    rows = list(keyboard["inline_keyboard"])
+    if user.get("ref_balance", 0) > 0:
+        rows.append([{"text": "💸 Вывести старый баланс", "callback_data": "withdraw"}])
+    return {"inline_keyboard": rows}

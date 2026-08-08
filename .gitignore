@@ -15,3 +15,26 @@ Thumbs.db
 # Scratch / temp
 *.log
 *.tmp
+
+# Secrets — API keys, tokens, VPS credentials
+n8n-setup/SECRETS.md
+SECRETS.md
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+.webui_secret_key
+.claude/settings.local.json
+
+# Vendored Claude Code skills (reinstall with: npx uipro-cli init --ai claude)
+.claude/skills/
+
+# Bot runtime state (per-deployment, not source)
+tgbot/state.json
+tgbot/state.json.bak
+prorab-bot/state.json
+prorab-bot/prorab.db
+.aider*

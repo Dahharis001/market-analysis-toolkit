@@ -18,6 +18,12 @@ async def activate_subscription(chat_id, days, region=None):
     region = region or user.get("region")
     panel = xui_api.for_region(region)
 
+    # Referral days owed to someone who had no subscription when they earned them are
+    # handed over the first time they actually get one.
+    if days > 0 and user.get("days_banked"):
+        days += user["days_banked"]
+        user["days_banked"] = 0
+
     now_ms = int(time.time() * 1000)
     base = user["expiry_ms"] if user["expiry_ms"] > now_ms else now_ms
     new_expiry = base + days * DAY_MS
@@ -42,6 +48,27 @@ async def activate_subscription(chat_id, days, region=None):
     user["expiry_ms"] = new_expiry
     state.save()
     return link, new_expiry
+
+
+async def grant_bonus_days(chat_id, days):
+    """Extends a user's subscription by bonus days. Someone who has never had a client
+    yet gets the days banked instead, so the reward is never silently dropped."""
+    user = state.ensure_user(chat_id)
+    if not user["xui_email"]:
+        user["days_banked"] = user.get("days_banked", 0) + days
+        state.save()
+        return False
+    await activate_subscription(chat_id, days)
+    return True
+
+
+async def current_link(chat_id):
+    """The link for an already-active subscription. None when there is nothing to show."""
+    user = state.ensure_user(chat_id)
+    if not user["xui_email"] or user["expiry_ms"] <= int(time.time() * 1000):
+        return None
+    panel = xui_api.for_region(user.get("region"))
+    return await panel.share_link(user["xui_email"])
 
 
 async def move_to_region(chat_id, region):

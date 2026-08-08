@@ -6,6 +6,28 @@ PROXY_TAG = "secure-proxy"
 
 def build_config(reality_info, client_uuid, remark="access"):
     """Sing-box subscription profile: VLESS Reality proxy + bypass for Russian sites/IPs."""
+    proxy = {
+        "type": "vless",
+        "tag": PROXY_TAG,
+        "server": reality_info["host"],
+        "server_port": reality_info["port"],
+        "uuid": client_uuid,
+        "packet_encoding": "xudp",
+        "tls": {
+            "enabled": True,
+            "server_name": reality_info["sni"],
+            "utls": {"enabled": True, "fingerprint": reality_info["fp"] or "chrome"},
+            "reality": {
+                "enabled": True,
+                "public_key": reality_info["pbk"],
+                "short_id": reality_info["sid"],
+            },
+        },
+    }
+    # sing-box rejects an empty flow string, so the key is only present when it applies.
+    if reality_info.get("flow"):
+        proxy["flow"] = reality_info["flow"]
+
     return {
         "dns": {
             "servers": [
@@ -16,25 +38,7 @@ def build_config(reality_info, client_uuid, remark="access"):
             "final": "dns-remote",
         },
         "outbounds": [
-            {
-                "type": "vless",
-                "tag": PROXY_TAG,
-                "server": reality_info["host"],
-                "server_port": reality_info["port"],
-                "uuid": client_uuid,
-                "flow": reality_info["flow"],
-                "packet_encoding": "xudp",
-                "tls": {
-                    "enabled": True,
-                    "server_name": reality_info["sni"],
-                    "utls": {"enabled": True, "fingerprint": reality_info["fp"]},
-                    "reality": {
-                        "enabled": True,
-                        "public_key": reality_info["pbk"],
-                        "short_id": reality_info["sid"],
-                    },
-                },
-            },
+            proxy,
             {"type": "direct", "tag": "direct"},
             {"type": "block", "tag": "block"},
         ],

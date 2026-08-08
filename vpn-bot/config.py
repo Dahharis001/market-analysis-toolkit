@@ -64,6 +64,13 @@ DEFAULT_REGION = "ru"
 XUI_PANEL_URL = PANELS["ru"]["url"]
 XUI_SERVER_HOST = PANELS["ru"]["host"]
 
+# Referrals pay in days, not cash: an extra user costs us server capacity we have already
+# paid for, so a day is worth far more to the referrer than it costs us — and there are no
+# payouts to arrange. Both sides are rewarded, on the invited user's first payment.
+REFERRAL_DAYS_INVITER = int(os.environ.get("REFERRAL_DAYS_INVITER", "14"))
+REFERRAL_DAYS_INVITEE = int(os.environ.get("REFERRAL_DAYS_INVITEE", "7"))
+
+# Legacy cash balances earned under the old percentage scheme stay withdrawable.
 REFERRAL_PERCENT = float(os.environ.get("REFERRAL_PERCENT", "20"))
 MIN_WITHDRAWAL_RUB = float(os.environ.get("MIN_WITHDRAWAL_RUB", "300"))
 

@@ -1,6 +1,9 @@
 [Unit]
 Description=Telegram VPN subscription bot (Platega + 3x-ui)
-After=network-online.target
+# The bot talks to the 3x-ui panel on localhost and reaches Telegram through a local
+# proxy, so on boot it must come up after both. Ordering only — if a unit is absent
+# or named differently on this host, systemd ignores the entry instead of failing.
+After=network-online.target x-ui.service
 Wants=network-online.target
 
 [Service]
